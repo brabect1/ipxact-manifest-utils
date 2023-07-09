@@ -57,3 +57,28 @@ printing IpxactItem::
         #<<<<----
         s = ET.tostring(root, encoding="unicode")
         sys.stdout.write(s);
+
+create an IP-XACT element manually::
+
+    import ipyxact.ipyxact
+    
+    if __name__ == "__main__":
+        catalog = ipyxact.ipyxact.Catalog();
+        #catalog.load(io.StringIO(data['kactus2-spi_example']));
+        
+        catalogs = ipyxact.ipyxact.Catalogs();
+        catalog.catalogs = catalogs;
+        
+        vlnv = ipyxact.ipyxact.Vlnv();
+        vlnv.vendor = 'my_vendor'
+        vlnv.version = '1.1'
+        vlnv.name = 'my_name'
+        vlnv.library = 'my_lib'
+        
+        ipxactFile = ipyxact.ipyxact.IpxactFile();
+        ipxactFile.name = '../some/path'
+        ipxactFile.vlnv = vlnv
+        
+        catalogs.ipxactFile.append( ipxactFile );
+        
+        catalog.write(sys.stdout,indent='  ')
