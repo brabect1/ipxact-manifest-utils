@@ -25,3 +25,35 @@ Resources
   * ARM IP-XACT Components Reference Manual https://developer.arm.com/documentation/ddi0429/a
   * note on ``ipx::` Tcl namespace in Xilinx Vivado https://support.xilinx.com/s/question/0D52E00006iHkr7SAC/custom-ipxact-specification-for-system-generator-blocks?language=en_US
   
+ipyxact
+-------
+
+printing IpxactItem::
+
+    from ipyxact.ipyxact import Component, Catalog
+    
+    # https://stackoverflow.com/a/65808327
+    def _xml_pretty_print(current, parent=None, index=-1, depth=0):
+        for i, node in enumerate(current):
+            _xml_pretty_print(node, current, i, depth + 1)
+        if parent is not None:
+            if index == 0:
+                parent.text = '\n' + ('\t' * depth)
+            else:
+                parent[index - 1].tail = '\n' + ('\t' * depth)
+            if index == len(parent) - 1:
+                current.tail = '\n' + ('\t' * (depth - 1))
+    
+    if __name__ == "__main__":
+        catalog = Catalog();
+        catalog.load(io.StringIO(data['kactus2-spi_example']));
+        root = ET.Element('' + catalog._tag)
+        catalog._write(root, '')
+    
+        #---->>>>
+        # in python 3.9+: tree = ET.ElementTree(root)
+        # in python 3.9+: ET.indent(tree, space="\t", level=0)
+        _xml_pretty_print(root)
+        #<<<<----
+        s = ET.tostring(root, encoding="unicode")
+        sys.stdout.write(s);
