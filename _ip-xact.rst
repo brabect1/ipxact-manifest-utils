@@ -4,6 +4,11 @@ IP-XACT
 Resources
 ---------
 
+* XML Schemas
+
+  * Official Accellera schemas: http://www.spiritconsortium.org/XMLSchema/
+  * Schema copies on github: https://github.com/edaa-org/IPXACT-Schema
+  
 * Examples
 
   * Simple catalog file https://gist.github.com/berndca/8a9a95eb6a20a9b07e2c9a44045ec810
