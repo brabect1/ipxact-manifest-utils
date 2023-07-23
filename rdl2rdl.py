@@ -11,7 +11,7 @@ from systemrdl import RDLListener, RDLWalker
 # add `.` source tree into PYTHONPATH
 sys.path.append(os.path.join(os.path.dirname(__file__), '.'))
 
-import RDLWriter
+import rdlWriter
 
 # Instantiate the parser
 parser = argparse.ArgumentParser(description='Reads in System RDL file and exports it to System RDL model.')
@@ -37,5 +37,5 @@ except RDLCompileError:
 
 # Traverse the register model!
 walker = RDLWalker(unroll=True)
-listener = RDLWriter.RDLWriterListener()
+listener = rdlWriter.rdlWriterListener()
 walker.walk(root, listener)

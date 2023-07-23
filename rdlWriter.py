@@ -3,7 +3,7 @@ from systemrdl import RDLListener, RDLWalker
 from systemrdl.node import FieldNode, AddressableNode, RegNode
 
 # Define a listener that will print out the register model hierarchy
-class RDLWriterListener(RDLListener):
+class rdlWriterListener(RDLListener):
     f = sys.stdout;
 
     def __init__(self, f=None):
