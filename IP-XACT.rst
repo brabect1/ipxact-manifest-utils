@@ -66,8 +66,7 @@ Components
     * ``file`` (s): Describes a file/directory within a fileSet.
     
       * ``name``: A file path. The value is of ``ipxact:stringURIExpression`` type.
-      * ``fileType`` (s): Identifies the file type. Can be one of the Std.-defined types (e.g. ``verilogSource``, see C.8 in 1685-2014; 1685-2022 defines more pre-defined types) or ``user``. For custom types use:
-``<ipxact:fileType user="...">user</ipxact:fileType>``.
+      * ``fileType`` (s): Identifies the file type. Can be one of the Std.-defined types (e.g. ``verilogSource``, see C.8 in 1685-2014; 1685-2022 defines more pre-defined types) or ``user``. For custom types use: ``<ipxact:fileType user="...">user</ipxact:fileType>``.
 
         There can be more fileTypes for a file. For example Xilinx uses the user fileType element to describe
         various xilinx-specific use cases of the file::
