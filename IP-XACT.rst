@@ -39,7 +39,7 @@ Components
 
 * ``model``
 
-  * ``instantiations``
+  * (opt.) ``instantiations``
   
     * ``componentInstantiation`` (s): Collects information needed to instantiate a component model.
     
@@ -57,6 +57,25 @@ Components
       * (opt.) ``fileSetRef`` (s): Reference to a fileSet in the same IP-XACT document.
       * (opt.) ``parameters``: Describes additional parameters for the enclosing instantiation element.
       * (opt.) ``vendorExtensions``
+      
+  * (opt.) ``ports``
+  
+    * ``port`` (s)
+  
+  * (opt.) ``views``
+  
+    .. note:: The only thing that a ``view`` element does is referring to a particular instantiation
+       and optionally binding it to a set of tools/environments. If the tool binding information
+       is irrelevant for the IP-XACT recipient, it seems that processing the ``views`` sub-tree can
+       be avoided.
+  
+    * ``view`` (s)
+    
+      * ``name``
+      * (opt.) ``componentInstantiationRef``
+      * (opt.) ``envIdentifier`` (s): This elements can specify tool/environment for which the enclosing
+        view applies. For example, it may specify a synthesis tool or a simulation tool to be used for
+        a particular view.
 
 * ``fileSets``
 
