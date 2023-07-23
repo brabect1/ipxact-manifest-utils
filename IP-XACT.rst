@@ -41,7 +41,7 @@ Components
 
   * ``instantiations``
   
-    * ``componentInstantiation``(s): Collects information needed to instantiate a component model.
+    * ``componentInstantiation`` (s): Collects information needed to instantiate a component model.
     
       * ``name``: Instantiation ID.
       * (opt.) ``moduleName``: Can be used identify (top) module represented by the instantiation/model.
@@ -54,19 +54,19 @@ Components
            former is more pertinent to HDL models (as IEEE Std. gives examples of various representations
            in different HDLs).
         
-      * (opt.) ``fileSetRef``(s): Reference to a fileSet in the same IP-XACT document.
+      * (opt.) ``fileSetRef`` (s): Reference to a fileSet in the same IP-XACT document.
       * (opt.) ``parameters``: Describes additional parameters for the enclosing instantiation element.
       * (opt.) ``vendorExtensions``
 
 * ``fileSets``
 
-  * ``fileSet``(s):
+  * ``fileSet`` (s):
   
     * ``name``: fileSet's ID.
-    * ``file``(s): Describes a file/directory within a fileSet.
+    * ``file`` (s): Describes a file/directory within a fileSet.
     
       * ``name``: A file path. The value is of ``ipxact:stringURIExpression`` type.
-      * ``fileType``(s): Identifies the file type. Can be one of the Std.-defined types (e.g. ``verilogSource``, see C.8 in 1685-2014; 1685-2022 defines more pre-defined types) or ``user``. For custom types use:
+      * ``fileType`` (s): Identifies the file type. Can be one of the Std.-defined types (e.g. ``verilogSource``, see C.8 in 1685-2014; 1685-2022 defines more pre-defined types) or ``user``. For custom types use:
 ``<ipxact:fileType user="...">user</ipxact:fileType>``.
 
         There can be more fileTypes for a file. For example Xilinx uses the user fileType element to describe
