@@ -38,8 +38,11 @@ Components
 ----------
 
 * ``model``
+
   * ``instantiations``
+  
     * ``componentInstantiation``(s): Collects information needed to instantiate a component model.
+    
       * ``name``: Instantiation ID.
       * (opt.) ``moduleName``: Can be used identify (top) module represented by the instantiation/model.
       * (opt.) ``moduleParameters``: Enumerates module parameters. Can be used if the instantiation/model
@@ -56,9 +59,12 @@ Components
       * (opt.) ``vendorExtensions``
 
 * ``fileSets``
+
   * ``fileSet``(s):
+  
     * ``name``: fileSet's ID.
     * ``file``(s): Describes a file/directory within a fileSet.
+    
       * ``name``: A file path. The value is of ``ipxact:stringURIExpression`` type.
       * ``fileType``(s): Identifies the file type. Can be one of the Std.-defined types (e.g. ``verilogSource``, see C.8 in 1685-2014; 1685-2022 defines more pre-defined types) or ``user``. For custom types use:
 ``<ipxact:fileType user="...">user</ipxact:fileType>``.
