@@ -17,6 +17,7 @@ Resources
   * LEON2 example https://www.accellera.org/images/activities/committees/ip-xact/Leon2_1685-2014.zip
   * kactus2 pulpino example https://github.com/kactus2/pulpinoexperiment
   * Xilinx IPs: Note that Xilinx has settled on 1685-2009, which is structurally different than newer standards.
+  
     * Vivado-distributed IPs under ``data/ip/xilinx/<ip>/``
     * rgb2dvi IP: https://github.com/Digilent/vivado-library/blob/master/ip/rgb2dvi/component.xml
     * pynq pattern controller IP: https://github.com/Xilinx/PYNQ/blob/master/boards/ip/pattern_controller_1.1/component.xml
