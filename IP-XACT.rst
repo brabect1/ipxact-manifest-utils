@@ -20,6 +20,7 @@ Resources
     * Vivado-distributed IPs under ``data/ip/xilinx/<ip>/``
     * rgb2dvi IP: https://github.com/Digilent/vivado-library/blob/master/ip/rgb2dvi/component.xml
     * pynq pattern controller IP: https://github.com/Xilinx/PYNQ/blob/master/boards/ip/pattern_controller_1.1/component.xml
+    * clk mux: https://github.com/Xilinx/IIoT-EDDP/blob/master/SDSoC/platforms/arty_z7_20_foc/hw/vivado/arty_z7_20_foc.ipdefs/ip_repo_0/clk_mux/component.xml
 
 * tools
 
@@ -54,7 +55,19 @@ Components
            former is more pertinent to HDL models (as IEEE Std. gives examples of various representations
            in different HDLs).
         
-      * (opt.) ``fileSetRef`` (s): Reference to a fileSet in the same IP-XACT document.
+      * (opt.) ``fileSetRef`` (s): Reference to a fileSet in the containing document (i.e. the same IP-XACT document) or another document referenced by VLNV.
+      
+        The fact that there can be multiple ``fileSetRef`` elements in the instantiation
+        and that they can point to an arbitrary IP-XACT document could be used to capture
+        dependencies. One inconvenience is that it the dependency would better be captured
+        at the instantiation/model level rather than pointing to a file set. If using this
+        mechanism for capturing dependencies, a well-defined file set naming convention
+        would likely be inevitable.
+        
+        Xilinx seems to use similar approach except that it puts the dependency information
+        into a ``fileSet.vendorExtension``. See https://github.com/Xilinx/revCtrl/blob/master/ip/axi_iic_0/axi_iic_0.xml
+        and search for ``xilinx_vhdlbehavioralsimulation_xilinx_com_ip_blk_mem_gen_8_2__ref_view_fileset``.
+        
       * (opt.) ``parameters``: Describes additional parameters for the enclosing instantiation element.
       * (opt.) ``vendorExtensions``
       
