@@ -45,7 +45,11 @@ Components
   
     * ``componentInstantiation`` (s): Collects information needed to instantiate a component model.
     
-      * ``name``: Instantiation ID.
+      * ``name``: Instantiation ID of ``xs:NMTOKEN`` type (i.e. word chars with ``:``, ``-`` and ``_``).
+      * (opt.) ``language``: Specifies the HDL used for a specific instantiation [IEEE Std. 1685-2014].
+        However, there seems to be no restriction on the actual value and hence may be used to indicate
+        whatever "language" is relevant to the ``fileSetRef(s)`` in the enclosing instantiation.
+      
       * (opt.) ``moduleName``: Can be used identify (top) module represented by the instantiation/model.
       * (opt.) ``moduleParameters``: Enumerates module parameters. Can be used if the instantiation/model
         represents a parameterized HDL model.
@@ -96,7 +100,14 @@ Components
   * ``fileSet`` (s):
   
     * ``name``: fileSet's ID.
-    * ``file`` (s): Describes a file/directory within a fileSet.
+    * (opt.) ``displayName``
+    * (opt.) ``description``
+    * (opt.) ``group``: A single, descriptive word identifying the enclosing file sets' purpose.
+    * ``file`` (s): Describes a file/directory within a file set.
+    
+      .. note:: ``file`` XML element can have any XML attributes. Hence vendors may
+         use whatever custom attributes they like. Obviously, anything custom here
+         is non-standard and rises chances for attribute name conlisions and misinterpretation.
     
       * ``name``: A file path. The value is of ``ipxact:stringURIExpression`` type.
       * ``fileType`` (s): Identifies the file type. Can be one of the Std.-defined types (e.g. ``verilogSource``, see C.8 in 1685-2014; 1685-2022 defines more pre-defined types) or ``user``. For custom types use: ``<ipxact:fileType user="...">user</ipxact:fileType>``.
@@ -113,6 +124,9 @@ Components
                 <spirit:userFileType>USED_IN_synthesis</spirit:userFileType>
             </spirit:file>
 
+      * (opt.) ``vendorExtensions``: ``file`` can have vendor extensions.
+      
+    * (opt.) ``vendorExtensions``: ``fileSet`` can have vendor extensions.
 
 ipyxact
 -------
