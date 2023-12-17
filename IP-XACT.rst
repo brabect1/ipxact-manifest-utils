@@ -36,6 +36,13 @@ Resources
   * ARM IP-XACT Components Reference Manual https://developer.arm.com/documentation/ddi0429/a
   * note on ``ipx::` Tcl namespace in Xilinx Vivado https://support.xilinx.com/s/question/0D52E00006iHkr7SAC/custom-ipxact-specification-for-system-generator-blocks?language=en_US
 
+Validation
+----------
+
+::
+
+    xmllint -noout -schema schema/1685-2014/index.xsd <xml_file>
+
 Components
 ----------
 
@@ -194,6 +201,8 @@ Corresponding IP-XACT 2014 would look like follows::
           ...
        </ipxact:parameters>
     </ipxact:component>
+
+One problem arises with parameters that in HDL representation have no default value, as IP-XACT requires a non-empty ``<ipxact:value>`` for ``<ipxact:parameter>``. See https://forums.accellera.org/topic/7051-ipxact-parameter-with-emptyno-value/
 
 ipyxact
 -------
