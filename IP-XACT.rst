@@ -128,6 +128,73 @@ Components
       
     * (opt.) ``vendorExtensions``: ``fileSet`` can have vendor extensions.
 
+Perameterized Ports
+-------------------
+
+Many reusable IPs come with parameters and parameterized ports. See a GPIO controller IP (VHDL, https://github.com/tudortimi/ipxact/tree/master/tests/Leon2/xml/spiritconsortium.org/Leon2RTL/gpio/1.2)::
+
+    entity gpio is
+    generic (
+          GPI_BITS : integer := 8;
+          ...
+          );
+    
+    port (
+          gpi:        in     std_logic_vector(GPI_BITS-1 downto 0);
+          ...
+          );
+    end gpio;
+
+Corresponding IP-XACT 2014 would look like follows::
+
+    <ipxact:component ...>
+       ...
+       <ipxact:model>
+          ...
+          <ipxact:instantiations>
+             <ipxact:componentInstantiation>
+                <ipxact:name>vhdlsource</ipxact:name>
+                <ipxact:language>vhdl</ipxact:language>
+                <ipxact:moduleName>gpio(rtl)</ipxact:moduleName>
+                <ipxact:moduleParameters>
+                   <ipxact:moduleParameter minimum="1" maximum="32" dataType="integer">
+                      <ipxact:name>GPI_BITS</ipxact:name>
+                      <ipxact:value>gpi</ipxact:value>            <!-- Notice the use of `gpi` as value variable/ID -->
+                   </ipxact:moduleParameter>
+                   ...
+                </ipxact:moduleParameters>
+             </ipxact:componentInstantiation>
+          </ipxact:instantiations>
+          <ipxact:ports>
+             <ipxact:port>
+                <ipxact:name>gpi</ipxact:name>
+                <ipxact:wire>
+                   <ipxact:direction>in</ipxact:direction>
+                   <ipxact:vectors>
+                      <ipxact:vector>
+                         <ipxact:left>gpi - 1</ipxact:left>
+                         <ipxact:right>0</ipxact:right>           <!-- Notice the use of `gpi` as value variable/ID -->
+                      </ipxact:vector>
+                   </ipxact:vectors>
+                </ipxact:wire>
+             </ipxact:port>
+             ...
+          </ipxact:ports>
+          ...
+       </ipxact:model>
+       ...
+       <ipxact:parameters>
+          <ipxact:parameter parameterId="gpi" resolve="user" order="0" configGroups="requiredConfig"
+                            prompt="Number of input:"
+                            minimum="1"
+                            maximum="32">
+             <ipxact:name>GPI_BITS</ipxact:name>
+             <ipxact:value>8</ipxact:value>
+          </ipxact:parameter>
+          ...
+       </ipxact:parameters>
+    </ipxact:component>
+
 ipyxact
 -------
 
