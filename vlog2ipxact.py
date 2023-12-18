@@ -21,8 +21,42 @@ class Port(object):
 
 def get_ports(module_data: verible_verilog_syntax.SyntaxData):
     ports = [];
+    lastPortDecl = None;
     for port in module_data.iter_find_all({"tag": ["kPortDeclaration", "kPort"]}):
-        ports.append( port.find({"tag": ["SymbolIdentifier", "EscapedIdentifier"]}).text );
+        if port.tag == 'kPortDeclaration':
+            lastPortDecl = port;
+
+        name = port.find({"tag": ["SymbolIdentifier", "EscapedIdentifier"]});
+        if name:
+            name = name.text;
+        else:
+            name = 'undefined_port';
+
+        dimensions = '';
+        direction = 'input ';
+        datatype = '';
+
+        if lastPortDecl:
+            nodes = lastPortDecl.find_all({'tag': ['kDimensionRange']});
+            for node in nodes:
+                dimensions += node.text;
+
+            if len(dimensions) > 0:
+                dimensions += ' ';
+
+            datatype = lastPortDecl.find({'tag': ['kDataTypePrimitive']});
+            if datatype:
+                datatype = datatype.text + ' ';
+            else:
+                if hasattr(lastPortDecl.children[1], 'tag'):
+                    datatype = lastPortDecl.children[1].text + ' ';
+                else:
+                    datatype = '';
+
+            direction = lastPortDecl.children[0].text + ' ';
+        #TODO print(anytree.RenderTree(port));
+        #TODO print(port.children[0]);
+        ports.append( direction + datatype + dimensions + name );
 
     return ports;
 
