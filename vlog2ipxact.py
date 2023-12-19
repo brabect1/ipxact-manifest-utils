@@ -16,22 +16,67 @@ import sys
 import anytree
 import verible_verilog_syntax
 import xml.etree.ElementTree as et
+from typing import Iterable, Optional
 
 # https://stackoverflow.com/a/65808327
-def _pretty_print(current, parent=None, index=-1, depth=0):
+def _pretty_print(current, parent=None, index=-1, depth=0, indent='  '):
     for i, node in enumerate(current):
-        _pretty_print(node, current, i, depth + 1)
+        _pretty_print(node, current, i, depth + 1, indent)
     if parent is not None:
         if index == 0:
-            parent.text = '\n' + ('\t' * depth)
+            parent.text = '\n' + (indent * depth)
         else:
-            parent[index - 1].tail = '\n' + ('\t' * depth)
+            parent[index - 1].tail = '\n' + (indent * depth)
         if index == len(parent) - 1:
-            current.tail = '\n' + ('\t' * (depth - 1))
+            current.tail = '\n' + (indent * (depth - 1))
+
+# Declaring own SyntaxTree iterator that can search only
+# within a certain depth of the tree.
+class PreOrderDepthTreeIterator(verible_verilog_syntax._TreeIteratorBase):
+  def __init__(self, tree: "Node",
+               filter_: Optional[verible_verilog_syntax.CallableFilter] = None,
+               reverse_children: bool = False,
+               depth: int = -1):
+    self.tree = tree
+    self.reverse_children = reverse_children
+    self.filter_ = filter_ if filter_ else lambda n: True
+    self.depth = depth
+
+  def _iter_tree_depth(self, tree: Optional["Node"], depth=-1) -> Iterable["Node"]:
+    if self.filter_(tree):
+      yield tree
+    elif depth < 0 or depth > 0:
+      if depth > 0: depth -= 1;
+      for child in self._iter_children(tree):
+        yield from self._iter_tree_depth(child,depth)
+
+  def _iter_tree(self, tree: Optional["Node"]) -> Iterable["Node"]:
+    yield from self._iter_tree_depth(tree, self.depth)
+
+
+class TypeDimension(object):
+
+    def __init__(self, left, right):
+        self.left = left;
+        self.right = right;
+
+    def __str__(self):
+        return '['+str(self.left)+':'+str(self.right)+']';
+
+    def etXact(self):
+        vector = et.Element('ipxact:vector');
+        left = et.SubElement(vector, 'ipxact:left');
+        left.text = self.left;
+        right = et.SubElement(vector, 'ipxact:right');
+        right.text = self.right;
+        return vector;
+
 
 class Port(object):
 
     attrs = ['direction', 'datatype', 'dimensions', 'name'];
+
+    lutDirection = {'input': 'in', 'output': 'out', 'inout': 'inout'};
 
     def __init__(self, name, **kwargs):
         self.name = name;
@@ -53,21 +98,40 @@ class Port(object):
         for attr in Port.attrs:
             val = getattr(self,attr);
             if val:
-                attrs.append(val);
+                # dimensions need to be treated specifically as it is
+                # a list of `TypeDimension` instances
+                if attr=='dimensions':
+                    attrs.append(''.join([str(d) for d in val]));
+                else:
+                    attrs.append(val);
 
         return ' '.join(attrs);
 
     def etXact(self):
         p = et.Element('ipxact:port');
 
-        n = et.SubElement(p, 'ipxact:name');
-        n.text = self.name;
+        name = et.SubElement(p, 'ipxact:name');
+        name.text = self.name;
 
-        d = et.Element('ipxact:direction');
-        d.text = self.direction;
+        signal = et.SubElement(p, 'ipxact:wire');
 
-        s = et.SubElement(p, 'ipxact:wire');
-        s.append(d);
+        direction = et.SubElement(signal, 'ipxact:direction');
+        if self.direction in Port.lutDirection:
+            direction.text = Port.lutDirection[self.direction];
+        else:
+            #TODO report error/warning
+            direction.text = Port.lutDirection['input'];
+
+        if self.dimensions and len(self.dimensions) > 0:
+            vectors= et.SubElement(signal, 'ipxact:vectors');
+            for dimension in self.dimensions:
+                vectors.append(dimension.etXact());
+
+        if self.datatype:
+            wiredefs = et.SubElement(signal, 'ipxact:wireTypeDefs');
+            wiredef = et.SubElement(wiredefs, 'ipxact:wireTypeDef');
+            typename = et.SubElement(wiredef, 'ipxact:typeName');
+            typename.text = self.datatype;
 
         return p;
 
@@ -90,9 +154,20 @@ def get_ports(module_data: verible_verilog_syntax.SyntaxData):
         datatype = None;
 
         if lastPortDecl:
-            nodes = lastPortDecl.find_all({'tag': ['kDimensionRange']});
-            if len(nodes) > 0:
-                dimensions = ''.join([node.text for node in nodes]);
+            portDimensions = lastPortDecl.find({'tag': ['kDeclarationDimensions']});
+            if portDimensions:
+                dimensions = [];
+                portDimensions = portDimensions.find_all({'tag': ['kDimensionRange','kDimensionScalar']});
+                for portDimension in portDimensions:
+                    if portDimension.tag == 'kDimensionRange':
+                        dimensionRange = portDimension.find_all({'tag':['kExpression']}, iter_ = PreOrderDepthTreeIterator, depth=1);
+                        left = dimensionRange[0].text;
+                        right = dimensionRange[1].text;
+                        dimensions.append( TypeDimension(left,right) );
+                    elif portDimension.tag == 'kDimensionScalar':
+                        size = portDimension.find({'tag':['kExpressionList']});
+                        if size:
+                            dimensions.append( TypeDimension('0',size.text+'-1') );
 
             datatype = lastPortDecl.find({'tag': ['kDataTypePrimitive']});
             if datatype:
@@ -148,6 +223,17 @@ if len(modules) > 0:
 
     module = modules[0];
     comp = et.Element('ipxact:component', ns);
+
+    vendor = et.SubElement(comp, 'ipxact:vendor');
+    library = et.SubElement(comp, 'ipxact:library');
+    name = et.SubElement(comp, 'ipxact:name');
+    version = et.SubElement(comp, 'ipxact:version');
+
+    vendor.text = 'vendor';
+    library.text = 'library';
+    name.text = 'name';
+    version.text = '1.0.0';
+
     model = et.SubElement(comp, 'ipxact:model');
 
     if 'ports' in module:
@@ -159,3 +245,5 @@ if len(modules) > 0:
     tree = et.ElementTree(comp);
     #et.indent(tree, space="\t", level=0);
     et.dump(tree);
+    with open('output.xml', 'wb') as f:
+        tree.write(f)
