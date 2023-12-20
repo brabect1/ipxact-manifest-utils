@@ -14,6 +14,8 @@
 
 import sys
 import anytree
+import logging
+import argparse
 import verible_verilog_syntax
 import xml.etree.ElementTree as et
 from typing import Iterable, Optional
@@ -206,12 +208,27 @@ def process_file_data(path: str, data: verible_verilog_syntax.SyntaxData):
         modules.append( {'name':name, 'ports':ports} );
     return modules;
 
+parser = argparse.ArgumentParser(description='Creates IP-XACT 2014 file from a SystemVerilog file.')
+parser.add_argument('-o', '--output', dest='output', required=False, type=pathlib.Path,
+        help='IP-XACT output file, stdout if not given')
+parser.add_argument('-i', '--input', dest='infile', required=True, type=pathlib.Path,
+        help='SystemVerilog')
+
+# parse CLI options
+opts = parser.parse_args()
+
+# setup logging level
+logging.basicConfig(level=logging.DEBUG)
 
 parser_path = sys.argv[1];
 file_path = sys.argv[2];
 
 parser = verible_verilog_syntax.VeribleVerilogSyntax(executable=parser_path);
-file_data = parser.parse_file(file_path);
+try:
+    file_data = parser.parse_file(file_path);
+except verible_verilog_syntax.Error as e:
+    logging.error(f"Failed to parse {file_path}: {e}");
+    sys.exit(1);
 
 modules = process_file_data(file_path, file_data);
 
