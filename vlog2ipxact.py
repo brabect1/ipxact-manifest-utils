@@ -362,6 +362,79 @@ def process_files(parser: verible_verilog_syntax.VeribleVerilogSyntax, files: Li
 
     return modules;
 
+
+def node_depth(node: anytree.Node):
+    if not node:
+        return -1;
+    cnt = 0;
+    p = node.parent;
+    while p is not None:
+        cnt += 1;
+        p = p.parent;
+    return cnt;
+
+
+def get_module_hierarchy(modules: List, root: str):
+    if not modules:
+        return None;
+
+    module = None;
+    for m in modules:
+        if m['name'] == root:
+            module = m;
+            break;
+
+    if not module:
+        return None;
+
+    mdict = {};
+    for m in modules:
+        mdict[m['name']] = m;
+
+    r = anytree.Node(module['name']);
+    nodes = [];
+    nodes.append( r );
+    while len(nodes) > 0:
+        n = nodes.pop(0);
+
+        # sanity check
+        if node_depth(n) > len(modules):
+            logging.error('Something wrong with module hierarchy!');
+            raise Exception('Too deep module hierarchy, cycle may exist.');
+
+        m = mdict[n.name];
+        if not m['is_leaf']:
+            l = [];
+            for i in m['instances']:
+                if i not in l:
+                    l.append(i);
+                    s = anytree.Node(i, parent=n);
+                    nodes.append( s );
+
+    return r;
+
+
+# returns module file paths in a reverse dependency order
+def get_files_in_hierarchy(modules: List, root: str):
+    hierarchy = get_module_hierarchy(modules, root);
+    paths = [];
+
+    if hierarchy:
+        l = [node.name for node in anytree.PreOrderIter(hierarchy)];
+        l.reverse();
+
+        pdict = {};
+        for m in modules:
+            pdict[m['name']] = m['path'];
+
+        for n in l:
+            if n in pdict:
+                p = pdict[n];
+                if p not in paths:
+                    paths.append(p);
+                del pdict[n];
+    return paths;
+
 parser = argparse.ArgumentParser(description='Extracts SystemVerilog/Verilog module interface into IP-XACT 2014.');
 parser.add_argument('-o', '--output', dest='output', required=False, type=pathlib.Path,
         help='IP-XACT output file, stdout if not given.');
@@ -423,8 +496,10 @@ if len(modules) > 0:
             sys.exit(1);
     else:
         # use the first root module
-        roots = [m['name'] for m in modules if m['is_root']];
+        roots = [m for m in modules if m['is_root']];
         module = roots[0];
+
+    print(anytree.RenderTree( get_module_hierarchy(modules, module['name']) ));
 
     comp = et.Element('ipxact:component', ns);
 
@@ -484,7 +559,8 @@ if len(modules) > 0:
     fileSetName = et.SubElement(fileSet, 'ipxact:name');
     fileSetName.text = instFileSetRef.text;
 
-    for f in opts.files:
+    for p in get_files_in_hierarchy(modules, module['name']):
+        f = pathlib.Path(p);
         fileSetFile = et.SubElement(fileSet, 'ipxact:file');
         fileSetFileName = et.SubElement(fileSetFile, 'ipxact:name');
 
