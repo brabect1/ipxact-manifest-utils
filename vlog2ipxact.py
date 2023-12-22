@@ -19,7 +19,7 @@ import logging
 import argparse
 import verible_verilog_syntax
 import xml.etree.ElementTree as et
-from typing import Iterable, Optional
+from typing import Iterable, Optional, List
 
 # https://stackoverflow.com/a/65808327
 def _pretty_print(current, parent=None, index=-1, depth=0, indent='  '):
@@ -297,37 +297,45 @@ def get_ports(module_data: verible_verilog_syntax.SyntaxData):
 
     return ports;
 
-def process_file_data(path: str, data: verible_verilog_syntax.SyntaxData):
+def process_files(parser: verible_verilog_syntax.VeribleVerilogSyntax, files: List[str]):
     modules = [];
 
-    for module in data.tree.iter_find_all({"tag": "kModuleDeclaration"}):
-        name = module.find({"tag": "kModuleHeader"});
-        if name:
-            name = name.find({"tag": ["SymbolIdentifier", "EscapedIdentifier"]},iter_=anytree.PreOrderIter);
+    for f in files:
+        try:
+            data = parser.parse_file(f);
+        except verible_verilog_syntax.Error as e:
+            logging.error(f"Failed to parse {f}: {e}");
+            continue;
+
+        for module in data.tree.iter_find_all({"tag": "kModuleDeclaration"}):
+            name = module.find({"tag": "kModuleHeader"});
             if name:
-                name = name.text;
+                name = name.find({"tag": ["SymbolIdentifier", "EscapedIdentifier"]},iter_=anytree.PreOrderIter);
+                if name:
+                    name = name.text;
 
-        if name:
-            logging.debug(f"[{name}]");
+            if name:
+                logging.debug(f"[{name}]");
 
-        ports = get_ports(module);
-        if ports:
-            for port in ports:
-                logging.debug(f"\t{port}");
+            ports = get_ports(module);
+            if ports:
+                for port in ports:
+                    logging.debug(f"\t{port}");
 
-        params = get_parameters(module);
-        if params:
-            for param in params:
-                logging.debug(f"\t# {param}");
+            params = get_parameters(module);
+            if params:
+                for param in params:
+                    logging.debug(f"\t# {param}");
 
-        modules.append( {'name':name, 'ports':ports, 'parameters':params} );
+            modules.append( {'name':name, 'path':f, 'ports':ports, 'parameters':params} );
+
     return modules;
 
 parser = argparse.ArgumentParser(description='Extracts SystemVerilog/Verilog module interface into IP-XACT 2014.');
 parser.add_argument('-o', '--output', dest='output', required=False, type=pathlib.Path,
         help='IP-XACT output file, stdout if not given.');
-parser.add_argument('-i', '--input', dest='file', required=True, type=pathlib.Path,
-        help='SystemVerilog/Verilog file to process.');
+parser.add_argument('-m', '--module', dest='module', required=False, type=str,
+        help='Name of the root module.');
 parser.add_argument('--xact', dest='xact', required=False, type=pathlib.Path,
         help='IP-XACT 2014 to be updated with module information.')
 parser.add_argument('--verible', dest='verible', required=False, type=pathlib.Path,
@@ -340,6 +348,8 @@ parser.add_argument('--xact-vendor', dest='vendor', required=False, type=str,
         help='IP-XACT component vendor name.');
 parser.add_argument('--rwd', dest='rwd', required=False, type=pathlib.Path,
         help='Relative Working Directory (RWD), which to make file paths relative to. Applies only if `output` not specified.');
+parser.add_argument('files', type=pathlib.Path, nargs='+',
+        help='List of SystemVerilog/Verilog file to process.');
 
 # parse CLI options
 opts = parser.parse_args();
@@ -353,7 +363,7 @@ if opts.verible:
     parser_path = str(opts.verible);
 
 # input SystemVerilog/Verilog file
-file_path = str(opts.file);
+file_paths = [str(f) for f in opts.files];
 
 if opts.output:
     outputDir = str(opts.output.parent);
@@ -363,13 +373,7 @@ else:
     outputDir = None;
 
 parser = verible_verilog_syntax.VeribleVerilogSyntax(executable=parser_path);
-try:
-    file_data = parser.parse_file(file_path);
-except verible_verilog_syntax.Error as e:
-    logging.error(f"Failed to parse {file_path}: {e}");
-    sys.exit(1);
-
-modules = process_file_data(file_path, file_data);
+modules = process_files(parser, file_paths);
 
 if len(modules) > 0:
     ns = {'xmlns:xsi':"http://www.w3.org/2001/XMLSchema-instance",
@@ -377,7 +381,20 @@ if len(modules) > 0:
     'xsi:schemaLocation':"http://www.accellera.org/XMLSchema/IPXACT/1685-2014 http://www.accellera.org/XMLSchema/IPXACT/1685-2014/index.xsd"
     };
 
-    module = modules[0];
+    module = None;
+    if opts.module:
+        for m in modules:
+            if m['name'] == opts.module:
+                module = m;
+                break;
+        if not module:
+            logging.error(f'Failed to find module \'{opts.module}\'!');
+            sys.exit(1);
+    else:
+        # use the last module parsed (assuming files were given in
+        # the order of dependency)
+        module = modules[-1];
+
     comp = et.Element('ipxact:component', ns);
 
     vendor = et.SubElement(comp, 'ipxact:vendor');
@@ -435,23 +452,25 @@ if len(modules) > 0:
     fileSet = et.SubElement(fileSets, 'ipxact:fileSet');
     fileSetName = et.SubElement(fileSet, 'ipxact:name');
     fileSetName.text = instFileSetRef.text;
-    fileSetFile = et.SubElement(fileSet, 'ipxact:file');
-    fileSetFileName = et.SubElement(fileSetFile, 'ipxact:name');
 
-    if outputDir:
-        fileSetFileName.text = str(opts.file.relative_to(outputDir));
-    else:
-        fileSetFileName.text = str(opts.file.absolute());
+    for f in opts.files:
+        fileSetFile = et.SubElement(fileSet, 'ipxact:file');
+        fileSetFileName = et.SubElement(fileSetFile, 'ipxact:name');
 
-    fileSetFileType = et.SubElement(fileSetFile, 'ipxact:fileType');
-    fileExt = opts.file.suffix;
-    if fileExt:
-        if fileExt == 'v' or fileExt == 'vh':
-            fileSetFileType.text = 'verilogSource';
+        if outputDir:
+            fileSetFileName.text = str(f.relative_to(outputDir));
+        else:
+            fileSetFileName.text = str(f.absolute());
+
+        fileSetFileType = et.SubElement(fileSetFile, 'ipxact:fileType');
+        fileExt = f.suffix;
+        if fileExt:
+            if fileExt == 'v' or fileExt == 'vh':
+                fileSetFileType.text = 'verilogSource';
+            else:
+                fileSetFileType.text = 'systemVerilogSource';
         else:
             fileSetFileType.text = 'systemVerilogSource';
-    else:
-        fileSetFileType.text = 'systemVerilogSource';
 
     _pretty_print(comp);
     tree = et.ElementTree(comp);
