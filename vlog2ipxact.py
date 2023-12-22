@@ -191,6 +191,18 @@ class Parameter(object):
         return p;
 
 
+def get_instances(module_data: verible_verilog_syntax.SyntaxData):
+    insts = None;
+    for inst in module_data.iter_find_all({"tag": ["kInstantiationBase"]}):
+        insttype = inst.find({"tag": ["kInstantiationType"]});
+        if insttype:
+            name = insttype.find({"tag": ["kUnqualifiedId", "SymbolIdentifier", "EscapedIdentifier"]});
+            name = name.text;
+            if not insts: insts = [];
+            insts.append(name);
+
+    return insts;
+
 def get_parameters(module_data: verible_verilog_syntax.SyntaxData):
     params = [];
     lastParamDecl = None;
@@ -327,7 +339,26 @@ def process_files(parser: verible_verilog_syntax.VeribleVerilogSyntax, files: Li
                 for param in params:
                     logging.debug(f"\t# {param}");
 
-            modules.append( {'name':name, 'path':f, 'ports':ports, 'parameters':params} );
+            insts = get_instances(module);
+            if insts:
+                for inst in insts:
+                    logging.debug(f"\t[{inst}]");
+            modules.append( {'name':name, 'path':f, 'ports':ports, 'parameters':params, 'instances':insts} );
+
+    # add "is_leaf" attribute
+    for m in modules:
+        m['is_leaf'] = m['instances'] is None;
+
+    # add "is_root" attribute
+    for m in modules:
+        if 'is_root' not in m:
+            m['is_root'] = True;
+        if m['instances']:
+            for s in [sm for sm in modules if sm['name'] in m['instances']]:
+                s['is_root'] = False;
+
+    roots = ','.join([m['name'] for m in modules if m['is_root']]);
+    logging.debug(f"roots: {roots}");
 
     return modules;
 
@@ -391,9 +422,9 @@ if len(modules) > 0:
             logging.error(f'Failed to find module \'{opts.module}\'!');
             sys.exit(1);
     else:
-        # use the last module parsed (assuming files were given in
-        # the order of dependency)
-        module = modules[-1];
+        # use the first root module
+        roots = [m['name'] for m in modules if m['is_root']];
+        module = roots[0];
 
     comp = et.Element('ipxact:component', ns);
 
