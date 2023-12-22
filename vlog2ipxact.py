@@ -172,31 +172,21 @@ class Parameter(object):
 
         return ' '.join(attrs);
 
-    def etXact(self):
-        p = et.Element('ipxact:port');
+    def etXact(self, elementTag='ipxact:moduleParameter'):
+        p = et.Element(elementTag);
 
         name = et.SubElement(p, 'ipxact:name');
         name.text = self.name;
 
-        signal = et.SubElement(p, 'ipxact:wire');
-
-        direction = et.SubElement(signal, 'ipxact:direction');
-        if self.direction in Port.lutDirection:
-            direction.text = Port.lutDirection[self.direction];
+        value = et.SubElement(p, 'ipxact:value');
+        if hasattr(self,'value') and self.value:
+            value.text = str(self.value);
         else:
-            #TODO report error/warning
-            direction.text = Port.lutDirection['input'];
-
-        if self.dimensions and len(self.dimensions) > 0:
-            vectors= et.SubElement(signal, 'ipxact:vectors');
-            for dimension in self.dimensions:
-                vectors.append(dimension.etXact());
+            # use the parameter name as "symolic" value
+            value.text = self.name;
 
         if self.datatype:
-            wiredefs = et.SubElement(signal, 'ipxact:wireTypeDefs');
-            wiredef = et.SubElement(wiredefs, 'ipxact:wireTypeDef');
-            typename = et.SubElement(wiredef, 'ipxact:typeName');
-            typename.text = self.datatype;
+            p.set('dataType', self.datatype);
 
         return p;
 
@@ -348,6 +338,8 @@ parser.add_argument('--xact-version', dest='version', required=False, type=str,
         help='IP-XACT component version number.');
 parser.add_argument('--xact-vendor', dest='vendor', required=False, type=str,
         help='IP-XACT component vendor name.');
+parser.add_argument('--rwd', dest='rwd', required=False, type=pathlib.Path,
+        help='Relative Working Directory (RWD), which to make file paths relative to. Applies only if `output` not specified.');
 
 # parse CLI options
 opts = parser.parse_args();
@@ -362,6 +354,13 @@ if opts.verible:
 
 # input SystemVerilog/Verilog file
 file_path = str(opts.file);
+
+if opts.output:
+    outputDir = str(opts.output.parent);
+elif opts.rwd:
+    outputDir = str(opts.rwd);
+else:
+    outputDir = None;
 
 parser = verible_verilog_syntax.VeribleVerilogSyntax(executable=parser_path);
 try:
@@ -405,10 +404,54 @@ if len(modules) > 0:
 
     model = et.SubElement(comp, 'ipxact:model');
 
+    views = et.SubElement(model, 'ipxact:views');
+
+    rtlView = et.SubElement(views, 'ipxact:view');
+    viewName = et.SubElement(rtlView, 'ipxact:name');
+    viewName.text = 'rtl';
+    compInstRef = et.SubElement(rtlView, 'ipxact:componentInstantiationRef');
+    compInstRef.text = viewName.text + '_implementation';
+
+    insts = et.SubElement(model, 'ipxact:instantiations');
+    compInst = et.SubElement(insts, 'ipxact:componentInstantiation');
+    instName = et.SubElement(compInst, 'ipxact:name');
+    instName.text = compInstRef.text;
+
+    if 'parameters' in module:
+        params  = et.SubElement(compInst, 'ipxact:moduleParameters');
+        for param in module['parameters']:
+            params.append( param.etXact() );
+
+    instFileSetRef = et.SubElement(compInst, 'ipxact:fileSetRef');
+    instFileSetRef = et.SubElement(instFileSetRef, 'ipxact:localName');
+    instFileSetRef.text = viewName.text + '_files';
+
     if 'ports' in module:
         ports  = et.SubElement(model, 'ipxact:ports');
         for port in module['ports']:
             ports.append( port.etXact() );
+
+    fileSets = et.SubElement(comp, 'ipxact:fileSets');
+    fileSet = et.SubElement(fileSets, 'ipxact:fileSet');
+    fileSetName = et.SubElement(fileSet, 'ipxact:name');
+    fileSetName.text = instFileSetRef.text;
+    fileSetFile = et.SubElement(fileSet, 'ipxact:file');
+    fileSetFileName = et.SubElement(fileSetFile, 'ipxact:name');
+
+    if outputDir:
+        fileSetFileName.text = str(opts.file.relative_to(outputDir));
+    else:
+        fileSetFileName.text = str(opts.file.absolute());
+
+    fileSetFileType = et.SubElement(fileSetFile, 'ipxact:fileType');
+    fileExt = opts.file.suffix;
+    if fileExt:
+        if fileExt == 'v' or fileExt == 'vh':
+            fileSetFileType.text = 'verilogSource';
+        else:
+            fileSetFileType.text = 'systemVerilogSource';
+    else:
+        fileSetFileType.text = 'systemVerilogSource';
 
     _pretty_print(comp);
     tree = et.ElementTree(comp);
