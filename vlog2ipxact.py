@@ -194,19 +194,30 @@ class Parameter(object):
 def get_instances(module_data: verible_verilog_syntax.SyntaxData):
     insts = None;
     for inst in module_data.iter_find_all({"tag": ["kInstantiationBase"]}):
+        instname = inst.find({"tag": ["kGateInstance"]});
+        if not instname: continue;
+
         insttype = inst.find({"tag": ["kInstantiationType"]});
         if insttype:
-            name = insttype.find({"tag": ["kUnqualifiedId", "SymbolIdentifier", "EscapedIdentifier"]});
-            name = name.text;
-            if not insts: insts = [];
-            insts.append(name);
+            modulename = insttype.find({"tag": ["kUnqualifiedId"]});
+            if not modulename: continue;
+
+            if len(modulename.children) > 0 and hasattr(modulename.children[0],'tag') and modulename.children[0].tag == 'SymbolIdentifier':
+                name = modulename.children[0].text;
+                if not insts: insts = [];
+                insts.append(name);
 
     return insts;
 
 def get_parameters(module_data: verible_verilog_syntax.SyntaxData):
     params = [];
+
+    paramlist = module_data.find({"tag": ["kFormalParameterList"]});
+    if not paramlist:
+        return params;
+
     lastParamDecl = None;
-    for param in module_data.iter_find_all({"tag": ["kParamDeclaration"]}):
+    for param in paramlist.iter_find_all({"tag": ["kParamDeclaration"]}):
         if param.tag == 'kParamDeclaration':
             lastParamDecl = param;
 
