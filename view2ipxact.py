@@ -39,6 +39,143 @@ def get_tag(tag: str, ns_uri: str = None):
     else:
         return tag;
 
+def xact_add_view(tree, viewname:str, files:List[pathlib.Path], outputDir:str = None):
+    if tree is None:
+        return;
+
+    ns = {'ipxact':"http://www.accellera.org/XMLSchema/IPXACT/1685-2014"};
+    comp = tree.getroot();
+    if comp is None or comp.tag != get_tag('component', ns['ipxact']):
+        logging.error(f'Expecting `ipxact:component` root in {opts.xact}: {comp.tag}');
+        return;
+
+    compinstname = viewname + '_implementation';
+    filesetname = viewname + '_files';
+
+    model = comp.find('ipxact:model',ns);
+    views = comp.find('ipxact:model/ipxact:views',ns);
+    insts = comp.find('ipxact:model/ipxact:instantiations',ns);
+    filesets = comp.find('ipxact:fileSets',ns);
+
+    # sanity check that the new view does not exit yet
+    if views is not None:
+        names = views.findall('ipxact:view/ipxact:name',ns);
+        for e in names:
+            if e.text == viewname:
+                logging.error(f'View `{viewname}` already exists!');
+                return;
+
+    # sanity check that the new componentInstantiation does not exit yet
+    if insts is not None:
+        names = insts.findall('ipxact:componentInstantiation/ipxact:name',ns);
+        for e in names:
+            if e.text == compinstname:
+                logging.error(f'Component instantiation `{compinstname}` already exists!');
+                return;
+
+    # sanity check that the new fileset does not exit yet
+    if filesets is not None:
+        names = filesets.findall('ipxact:fileset/ipxact:name',ns);
+        for e in names:
+            if e.text == filesetname:
+                logging.error(f'File set `{filesetname}` already exists!');
+                return;
+
+    elemseq = ['vendor', 'library', 'name', 'version',
+            'busInterfaces', 'indirectInterfaces', 'channels',
+            'remapStates', 'addressSpaces', 'memoryMaps',
+            'model', 'componentGenerators', 'choices',
+            'fileSets', 'whiteboxElements', 'cpus',
+            'otherClockDrivers', 'resetTypes', 'description',
+            'parameters', 'assertions', 'vendorExtensions'];
+
+    # create new model (if needed)
+    if model is None:
+        logging.warning(f'No `ipxact:model` element found!');
+        model = et.Element('ipxact:model');
+
+        predecesors = elemseq[:elemseq.index('model')];
+        inserted = False;
+        for i,e in enumerate(comp):
+            _, _, tag = e.tag.rpartition('}');
+            if tag not in predecesors:
+                comp.insert(i,model);
+                inserted = True;
+                break;
+        if not inserted: comp.append(model);
+
+    # create new views element (if needed)
+    if views is None:
+        logging.warning(f'No `ipxact:views` element found!');
+        views = et.Element('ipxact:views');
+
+        # `views` is the 1st element under `model`
+        model.insert(0,views);
+
+    # create new view element
+    view = et.SubElement(views, 'ipxact:view');
+    e = et.Element('ipxact:name');
+    e.text = viewname;
+    view.append(e);
+    e = et.Element('ipxact:componentInstantiationRef');
+    e.text = compinstname;
+    view.append(e);
+
+    # create new instantiations element (if needed)
+    if insts is None:
+        logging.warning(f'No `ipxact:instantiations` element found!');
+        views = et.Element('ipxact:instantiations');
+
+        # `instantiations` is the 2nd element under `model`
+        model.insert(1,views);
+
+    # create new component instantiation element
+    compinst = et.SubElement(insts, 'ipxact:componentInstantiation');
+    e = et.Element('ipxact:name');
+    e.text = compinstname;
+    compinst.append(e);
+    e = et.Element('ipxact:fileSetRef');
+    compinst.append(e);
+    e = et.Element('ipxact:localName');
+    e.text = filesetname;
+    compinst[-1].append(e);
+
+    # create new filesets element (if needed)
+    if filesets is None:
+        logging.warning(f'No `ipxact:filesets` element found!');
+        filesets = et.Element('ipxact:fileSets');
+
+        predecesors = elemseq[:elemseq.index('fileSets')];
+        inserted = False;
+        for i,e in enumerate(comp):
+            _, _, tag = e.tag.rpartition('}');
+            if tag not in predecesors:
+                comp.insert(i,filesets);
+                inserted = True;
+                break;
+        if not inserted: comp.append(filesets);
+
+    # create new fileset element
+    fileset = et.SubElement(filesets,'ipxact:fileSet');
+    e = et.Element('ipxact:name');
+    e.text = filesetname;
+    fileset.append(e);
+    e = et.Element('ipxact:localName');
+    e.text = filesetname;
+    for f in files:
+        fileSetFile = et.SubElement(fileset, 'ipxact:file');
+        e = et.SubElement(fileSetFile, 'ipxact:name');
+
+        if outputDir:
+            e.text = str(f.relative_to(outputDir));
+        else:
+            e.text = str(f.absolute());
+
+        e = et.SubElement(fileSetFile, 'ipxact:fileType');
+        e.text = 'unknown';
+
+    return;
+
 #TODO # Declaring own SyntaxTree iterator that can search only
 #TODO # within a certain depth of the tree.
 #TODO class PreOrderDepthTreeIterator(verible_verilog_syntax._TreeIteratorBase):
@@ -86,6 +223,8 @@ parser.add_argument('--xact-version', dest='version', required=False, type=str,
         help='IP-XACT component version number.');
 parser.add_argument('--xact-vendor', dest='vendor', required=False, type=str,
         help='IP-XACT component vendor name.');
+parser.add_argument('-n', '--view-name', dest='viewname', required=True, type=str,
+        help='IP view name.');
 parser.add_argument('--rwd', dest='rwd', required=False, type=pathlib.Path,
         help='Relative Working Directory (RWD), which to make file paths relative to. Applies only if `output` not specified.');
 parser.add_argument('files', type=pathlib.Path, nargs='+',
@@ -109,17 +248,17 @@ elif opts.rwd:
 else:
     outputDir = None;
 
-# IP-XACT  2014 namespace
-ns = {'xmlns:xsi':"http://www.w3.org/2001/XMLSchema-instance",
-'xmlns:ipxact':"http://www.accellera.org/XMLSchema/IPXACT/1685-2014",
-'xsi:schemaLocation':"http://www.accellera.org/XMLSchema/IPXACT/1685-2014 http://www.accellera.org/XMLSchema/IPXACT/1685-2014/index.xsd"
+# ElementTree namespaces for XML parsing
+# (the proper IP-XACT/XML namespaces shall use `xmlns:` prefix to
+# namespace names; however, ElementTree does not support it for
+# `ElementTree.register_namespace()`.)
+ns = {'xsi':"http://www.w3.org/2001/XMLSchema-instance",
+'ipxact':"http://www.accellera.org/XMLSchema/IPXACT/1685-2014"
 };
 
 for p,u in ns.items():
-    if p[:len('xmlns:')] == 'xmlns:':
-        n = p[len('xmlns:'):];
-        logging.debug(f"registering namespace {n}:{u}");
-        et.register_namespace(n, u);
+    logging.debug(f"registering namespace {p}:{u}");
+    et.register_namespace(p, u);
 
 tree = None;
 if opts.xact:
@@ -130,7 +269,13 @@ if opts.xact:
         sys.exit(1);
 
 if not tree:
-    comp = et.Element('ipxact:component', ns);
+    # proper IP-XACT 2014 XML namespaces
+    xactns = {'xmlns:xsi':"http://www.w3.org/2001/XMLSchema-instance",
+    'xmlns:ipxact':"http://www.accellera.org/XMLSchema/IPXACT/1685-2014",
+    'xsi:schemaLocation':"http://www.accellera.org/XMLSchema/IPXACT/1685-2014 http://www.accellera.org/XMLSchema/IPXACT/1685-2014/index.xsd"
+    };
+
+    comp = et.Element('ipxact:component', xactns);
 
     vendor = et.SubElement(comp, 'ipxact:vendor');
     library = et.SubElement(comp, 'ipxact:library');
@@ -161,67 +306,38 @@ if not tree:
 else:
     # test if root is an ipxact component
     comp = tree.getroot();
-    if comp is None or comp.tag != get_tag('component', ns['xmlns:ipxact']):
+    if comp is None or comp.tag != get_tag('component', ns['ipxact']):
         logging.error(f'Expecting `ipxact:component` root in {opts.xact}: {comp.tag}');
         sys.exit(1);
 
-#    # sanity check: vendor
-#    vendor = comp.find('vendor',ns);
-#    if not vendor:
-#        vendor = et.SubElement(comp, 'ipxact:vendor');
-#        if opts.vendor:
-#            logging.warning(f'Missing `ipxact:vendor` element in {opts.xact}!');
-#            vendor.text = opts.vendor;
-#        else:
-#            logging.error(f'Missing `ipxact:vendor` element in {opts.xact}!');
-#            vendor.text = 'vendor';
-#    elif opts.vendor and opts.vendor != vendor.text:
-#        logging.error(f'User `ipxact:vendor` element `{opts.vendor}` not match `{vendor.text}` in {opts.xact}');
-#
-#    # sanity check: library
-#    library = comp.find('library',ns);
-#    if not library:
-#        library = et.SubElement(comp, 'ipxact:library');
-#        if opts.library:
-#            logging.warning(f'Missing `ipxact:library` element in {opts.xact}!');
-#            library.text = opts.library;
-#        else:
-#            logging.error(f'Missing `ipxact:library` element in {opts.xact}!');
-#            library.text = 'library';
-#    elif opts.library and opts.library != library.text:
-#        logging.error(f'User `ipxact:library` element `{opts.library}` not match `{library.text}` in {opts.xact}');
-#
-#    # sanity check: name
-#    name = comp.find('name',ns);
-#    if not name:
-#        name = et.SubElement(comp, 'ipxact:name');
-#        if hasattr(opts,'name') and opts.name:
-#            logging.warning(f'Missing `ipxact:name` element in {opts.xact}!');
-#            name.text = opts.name;
-#        else:
-#            logging.error(f'Missing `ipxact:name` element in {opts.xact}!');
-#            name.text = opts.xact.name;
-#            sl = opts.xact.suffixes;
-#            if sl is not None and len(sl) > 0:
-#                name.text = name.text[:-len(''.join(sl))];
-#    elif hasattr(opts,'name') and opts.name and opts.name != name.text:
-#        logging.error(f'User `ipxact:name` element `{opts.name}` not match `{name.text}` in {opts.xact}');
-#
-#    # sanity check: version
-#    version = comp.find('version',ns);
-#    if not version:
-#        version = et.SubElement(comp, 'ipxact:version');
-#        if opts.version:
-#            logging.warning(f'Missing `ipxact:version` element in {opts.xact}!');
-#            version.text = opts.version;
-#        else:
-#            logging.error(f'Missing `ipxact:version` element in {opts.xact}!');
-#            version.text = '0.0.0';
-#    elif opts.version and opts.version != version.text:
-#        logging.error(f'User `ipxact:version` element `{opts.version}` not match `{version.text}` in {opts.xact}');
+    # sanity check for required VLNV elements
+    for i,tag in enumerate(['vendor','library','name','version']):
+        fulltag = 'ipxact:'+tag;
+        elem = comp.find(fulltag, ns);
+        if elem is None:
+            elem = et.Element(fulltag);
+            comp.insert(i,elem);
+            if hasattr(opts,tag) and getattr(opts,tag) is not None:
+                logging.warning(f'Missing `{fulltag}` element in {opts.xact}!');
+                elem.text = getattr(opts,tag);
+            else:
+                logging.error(f'Missing `{fulltag}` element in {opts.xact}!');
+                elem.text = tag;
+        elif hasattr(opts,tag):
+            attr = getattr(opts,tag);
+            if attr is not None and attr != elem.text:
+                logging.error(f'User `{fulltag}` element `{attr}` not match `{elem.text}` in {opts.xact}');
 
-#_pretty_print(tree.getroot());
+    tree = et.ElementTree(comp);
 
+# add new IP-XACT view
+xact_add_view( tree, opts.viewname, opts.files, outputDir );
+#TODO sys.exit(0);
+
+# reformat XML
+_pretty_print(tree.getroot());
+
+# print XML
 if opts.output:
     with open(str(opts.output), 'w') as f:
         tree.write(f, encoding='unicode', xml_declaration=True);
