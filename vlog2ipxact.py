@@ -464,7 +464,7 @@ parser.add_argument('--xact-vendor', dest='vendor', required=False, type=str,
 parser.add_argument('--rwd', dest='rwd', required=False, type=pathlib.Path,
         help='Relative Working Directory (RWD), which to make file paths relative to. Applies only if `output` not specified.');
 parser.add_argument('files', type=pathlib.Path, nargs='+',
-        help='List of SystemVerilog/Verilog file to process.');
+        help='List of SystemVerilog/Verilog files to process.');
 
 # parse CLI options
 opts = parser.parse_args();
