@@ -43,12 +43,22 @@ def xact_add_components(tree, files:List[pathlib.Path], outputDir:str = None):
     if tree is None:
         return;
 
+    trees = [];
+    for f in files:
+        try:
+            tree = et.parse(str(f));
+            trees.append([tree,f]);
+        except et.ParseError as e:
+            logging.error(f"Failed to parse {opts.xact}: {e}");
+
+    ns = {'ipxact':"http://www.accellera.org/XMLSchema/IPXACT/1685-2014"};
+    for [tree,path] in trees:
+        comp = tree.getroot();
+        if comp is None or comp.tag != get_tag('component', ns['ipxact']):
+            logging.error(f'Expecting `ipxact:component` root in {path}: {comp.tag}');
+            continue;
+
     pass; #TODO
-#TODO    ns = {'ipxact':"http://www.accellera.org/XMLSchema/IPXACT/1685-2014"};
-#TODO    comp = tree.getroot();
-#TODO    if comp is None or comp.tag != get_tag('component', ns['ipxact']):
-#TODO        logging.error(f'Expecting `ipxact:component` root in {opts.xact}: {comp.tag}');
-#TODO        return;
 #TODO
 #TODO    compinstname = viewname + '_implementation';
 #TODO    filesetname = viewname + '_files';
