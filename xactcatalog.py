@@ -33,15 +33,82 @@ def _pretty_print(current, parent=None, index=-1, depth=0, indent='  '):
             current.tail = '\n' + (indent * (depth - 1))
 
 
-def get_tag(tag: str, ns_uri: str = None):
+def compile_tag(tag: str, ns_uri: str = None):
     if ns_uri:
         return f'{{{ns_uri}}}{tag}';
     else:
         return tag;
 
+
+def strip_tag(element: et.Element):
+    if element is None:
+        return None;
+    _, _, tag = element.tag.rpartition('}');
+    return tag;
+
+
+class Vlnv(object):
+    
+    attrs = ['vendor', 'library', 'name', 'version'];
+
+    def __init__(self, **kwargs):
+        for a in Vlnv.attrs:
+            if kwargs is not None and a in kwargs:
+                setattr(self,a,kwargs[a]);
+            else:
+                setattr(self,a,None);
+
+    def __str__(self):
+        l = [];
+        for a in Vlnv.attrs:
+            l.append(f'{a}={getattr(self,a)}');
+        return ', '.join(l);
+
+    def __eq__(self, other):
+        if other is None or not issubclass(other,Vlnv):
+            return False;
+        else:
+            res = True;
+            for a in Vlnv.attrs:
+                res = res and (getattr(self,a) == getattr(other,a));
+            return res;
+
+    def isComplete(self):
+        return len([a for a in Vlnv.attrs if getattr(self,a) == None]) == 0;
+
+    def toList(self):
+        return [getattr(self,a) for a in Vlnv.attrs];
+
+    def toDict(self):
+        return {a: getattr(self,a) for a in Vlnv.attrs};
+
+    @classmethod
+    def fromElement(cls, element: et.Element):
+        if element is None:
+            return None;
+    
+        vlnv = {};
+        for i,tag in enumerate(Vlnv.attrs):
+            fulltag = 'ipxact:'+tag;
+            value = None;
+            for e in element:
+                if tag != strip_tag(e):
+                    continue;
+                else:
+                    value = e.text;
+                    break;
+            if value is None:
+                logging.error(f'Missing `{fulltag}` element in {strip_tag(element)}!');
+            vlnv[tag] = value;
+    
+        return Vlnv(**vlnv);
+
+
 def xact_add_components(tree, files:List[pathlib.Path], outputDir:str = None):
     if tree is None:
         return;
+
+    catalog = tree.getroot();
 
     trees = [];
     for f in files:
@@ -49,143 +116,80 @@ def xact_add_components(tree, files:List[pathlib.Path], outputDir:str = None):
             tree = et.parse(str(f));
             trees.append([tree,f]);
         except et.ParseError as e:
-            logging.error(f"Failed to parse {opts.xact}: {e}");
+            logging.error(f"Failed to parse {f}: {e}");
+
+    if len(trees) == 0:
+        return;
 
     ns = {'ipxact':"http://www.accellera.org/XMLSchema/IPXACT/1685-2014"};
-    for [tree,path] in trees:
-        comp = tree.getroot();
-        if comp is None or comp.tag != get_tag('component', ns['ipxact']):
+    components = catalog.find('ipxact:components',ns);
+
+    elemseq = ['vendor', 'library', 'name', 'version',
+            'description', 'catalogs'
+            'busDefinitions', 'abstractionDefinitions', 'components',
+            'abstractors', 'designs', 'designConfigurations',
+            'generatorChains',
+            'vendorExtensions'];
+
+    for [comptree,path] in trees:
+        comp = comptree.getroot();
+        if comp is None or comp.tag != compile_tag('component', ns['ipxact']):
             logging.error(f'Expecting `ipxact:component` root in {path}: {comp.tag}');
             continue;
 
-    pass; #TODO
-#TODO
-#TODO    compinstname = viewname + '_implementation';
-#TODO    filesetname = viewname + '_files';
-#TODO
-#TODO    model = comp.find('ipxact:model',ns);
-#TODO    views = comp.find('ipxact:model/ipxact:views',ns);
-#TODO    insts = comp.find('ipxact:model/ipxact:instantiations',ns);
-#TODO    filesets = comp.find('ipxact:fileSets',ns);
-#TODO
-#TODO    # sanity check that the new view does not exit yet
-#TODO    if views is not None:
-#TODO        names = views.findall('ipxact:view/ipxact:name',ns);
-#TODO        for e in names:
-#TODO            if e.text == viewname:
-#TODO                logging.error(f'View `{viewname}` already exists!');
-#TODO                return;
-#TODO
-#TODO    # sanity check that the new componentInstantiation does not exit yet
-#TODO    if insts is not None:
-#TODO        names = insts.findall('ipxact:componentInstantiation/ipxact:name',ns);
-#TODO        for e in names:
-#TODO            if e.text == compinstname:
-#TODO                logging.error(f'Component instantiation `{compinstname}` already exists!');
-#TODO                return;
-#TODO
-#TODO    # sanity check that the new fileset does not exit yet
-#TODO    if filesets is not None:
-#TODO        names = filesets.findall('ipxact:fileset/ipxact:name',ns);
-#TODO        for e in names:
-#TODO            if e.text == filesetname:
-#TODO                logging.error(f'File set `{filesetname}` already exists!');
-#TODO                return;
-#TODO
-#TODO    elemseq = ['vendor', 'library', 'name', 'version',
-#TODO            'busInterfaces', 'indirectInterfaces', 'channels',
-#TODO            'remapStates', 'addressSpaces', 'memoryMaps',
-#TODO            'model', 'componentGenerators', 'choices',
-#TODO            'fileSets', 'whiteboxElements', 'cpus',
-#TODO            'otherClockDrivers', 'resetTypes', 'description',
-#TODO            'parameters', 'assertions', 'vendorExtensions'];
-#TODO
-#TODO    # create new model (if needed)
-#TODO    if model is None:
-#TODO        logging.warning(f'No `ipxact:model` element found!');
-#TODO        model = et.Element('ipxact:model');
-#TODO
-#TODO        predecesors = elemseq[:elemseq.index('model')];
-#TODO        inserted = False;
-#TODO        for i,e in enumerate(comp):
-#TODO            _, _, tag = e.tag.rpartition('}');
-#TODO            if tag not in predecesors:
-#TODO                comp.insert(i,model);
-#TODO                inserted = True;
-#TODO                break;
-#TODO        if not inserted: comp.append(model);
-#TODO
-#TODO    # create new views element (if needed)
-#TODO    if views is None:
-#TODO        logging.warning(f'No `ipxact:views` element found!');
-#TODO        views = et.Element('ipxact:views');
-#TODO
-#TODO        # `views` is the 1st element under `model`
-#TODO        model.insert(0,views);
-#TODO
-#TODO    # create new view element
-#TODO    view = et.SubElement(views, 'ipxact:view');
-#TODO    e = et.Element('ipxact:name');
-#TODO    e.text = viewname;
-#TODO    view.append(e);
-#TODO    e = et.Element('ipxact:componentInstantiationRef');
-#TODO    e.text = compinstname;
-#TODO    view.append(e);
-#TODO
-#TODO    # create new instantiations element (if needed)
-#TODO    if insts is None:
-#TODO        logging.warning(f'No `ipxact:instantiations` element found!');
-#TODO        views = et.Element('ipxact:instantiations');
-#TODO
-#TODO        # `instantiations` is the 2nd element under `model`
-#TODO        model.insert(1,views);
-#TODO
-#TODO    # create new component instantiation element
-#TODO    compinst = et.SubElement(insts, 'ipxact:componentInstantiation');
-#TODO    e = et.Element('ipxact:name');
-#TODO    e.text = compinstname;
-#TODO    compinst.append(e);
-#TODO    e = et.Element('ipxact:fileSetRef');
-#TODO    compinst.append(e);
-#TODO    e = et.Element('ipxact:localName');
-#TODO    e.text = filesetname;
-#TODO    compinst[-1].append(e);
-#TODO
-#TODO    # create new filesets element (if needed)
-#TODO    if filesets is None:
-#TODO        logging.warning(f'No `ipxact:filesets` element found!');
-#TODO        filesets = et.Element('ipxact:fileSets');
-#TODO
-#TODO        predecesors = elemseq[:elemseq.index('fileSets')];
-#TODO        inserted = False;
-#TODO        for i,e in enumerate(comp):
-#TODO            _, _, tag = e.tag.rpartition('}');
-#TODO            if tag not in predecesors:
-#TODO                comp.insert(i,filesets);
-#TODO                inserted = True;
-#TODO                break;
-#TODO        if not inserted: comp.append(filesets);
-#TODO
-#TODO    # create new fileset element
-#TODO    fileset = et.SubElement(filesets,'ipxact:fileSet');
-#TODO    e = et.Element('ipxact:name');
-#TODO    e.text = filesetname;
-#TODO    fileset.append(e);
-#TODO    e = et.Element('ipxact:localName');
-#TODO    e.text = filesetname;
-#TODO    for f in files:
-#TODO        fileSetFile = et.SubElement(fileset, 'ipxact:file');
-#TODO        e = et.SubElement(fileSetFile, 'ipxact:name');
-#TODO
-#TODO        if outputDir:
-#TODO            e.text = str(f.relative_to(outputDir));
-#TODO        else:
-#TODO            e.text = str(f.absolute());
-#TODO
-#TODO        e = et.SubElement(fileSetFile, 'ipxact:fileType');
-#TODO        e.text = 'unknown';
-#TODO
-#TODO    return;
+        vlnv = Vlnv.fromElement(comp);
+        logging.debug(f'{path} vlnv: {vlnv}');
+
+        # skip adding a new element if not all VLNV defined
+        if not vlnv.isComplete():
+            logging.error(f'Missing complete VLNV information in {path}!');
+            continue;
+
+        # create new `components` element (if needed)
+        if components is None:
+            logging.warning(f'No `ipxact:components` element found!');
+            components = et.Element('ipxact:components');
+    
+            predecesors = elemseq[:elemseq.index('components')];
+            inserted = False;
+            for i,e in enumerate(catalog):
+                tag = strip_tag(e);
+                if tag not in predecesors:
+                    catalog.insert(i,components);
+                    inserted = True;
+                    break;
+            if not inserted: catalog.append(components);
+
+        # check if component already registered
+        comp = None;
+        for i,e in enumerate(components):
+
+            # sanity check of the components sub-element type
+            tag = strip_tag(e);
+            if tag != 'ipxactFile':
+                logging.error(f'Unexpected element under `ipxact:components`: {tag}');
+                continue;
+
+            # check vlnv
+            if vlnv == Vlnv.fromElement(e):
+                logging.error(f'Component already regoistered: {path}');
+                comp = e;
+                break;
+
+        # add new component
+        if comp is None:
+            comp = et.Element('ipxact:ipxactFile');
+            e = et.Element('ipxact:vlnv', **vlnv.toDict());
+            comp.append(e);
+            e = et.Element('ipxact:name');
+            if outputDir:
+                e.text = str(path.relative_to(outputDir));
+            else:
+                e.text = str(path.absolute());
+            comp.append(e);
+            components.append(comp);
+
+    return;
 
 
 parser = argparse.ArgumentParser(description='Creates or adds to references to IP-XACT 2014 components into IP-XACT 2014 catalog.');
@@ -203,6 +207,8 @@ parser.add_argument('--xact-vendor', dest='vendor', required=False, type=str,
         help='IP-XACT catalog vendor name.');
 parser.add_argument('--xact-name', dest='name', required=False, type=str, default='mainfest',
         help='IP-XACT catalog name.');
+parser.add_argument('--xact-description', dest='description', required=False, type=str, default='mainfest',
+        help='IP-XACT catalog/library description.');
 parser.add_argument('--rwd', dest='rwd', required=False, type=pathlib.Path,
         help='Relative Working Directory (RWD), which to make file paths relative to. Applies only if `output` not specified.');
 parser.add_argument('files', type=pathlib.Path, nargs='+',
@@ -251,14 +257,15 @@ if not tree:
     };
 
     # new root element
-    catalog = et.Element('ipxact:catalog', xactns);
+    catalog = et.Element(compile_tag('catalog',ns['ipxact']), xactns);
 
     # default XML element values (unless relevant options defined
     # through CLI options)
     defaults = {'version':'0.0.0', 'name':'manifest'};
 
-    for tag in ['vendor', 'library', 'name', 'version']:
-        e = et.SubElement(catalog, 'ipxact:'+tag);
+    for tag in ['vendor', 'library', 'name', 'version', 'description']:
+        #TODO e = et.SubElement(catalog, 'ipxact:'+tag);
+        e = et.SubElement(catalog, compile_tag(tag,ns['ipxact']));
 
         if hasattr(opts,tag) and getattr(opts,tag) is not None:
             e.text = str(getattr(opts,tag));
@@ -272,7 +279,7 @@ if not tree:
 else:
     # test if root is an ipxact component
     catalog = tree.getroot();
-    if catalog is None or catalog.tag != get_tag('catalog', ns['ipxact']):
+    if catalog is None or catalog.tag != compile_tag('catalog', ns['ipxact']):
         logging.error(f'Expecting `ipxact:catalog` root in {opts.xact}: {catalog.tag}');
         sys.exit(1);
 
@@ -296,9 +303,27 @@ else:
 
     tree = et.ElementTree(catalog);
 
+# add description (if defined)
+if opts.description:
+    description = catalog.find('ipxact:description',ns);
+    if description is None:
+        logging.warning(f'No `ipxact:description` element found in catalog!');
+        description = et.Element(compile_tag('description',ns['ipxact']));
+    
+        predecesors = ['vendor','library','name','version'];
+        inserted = False;
+        for i,e in enumerate(tree.getroot()):
+            tag = strip_tag(e);
+            if tag not in predecesors:
+                tree.getroot().insert(i,description);
+                inserted = True;
+                break;
+        if not inserted: tree.getroot().append(description);
+
+    description.text = opts.description;
+
 # add new IP-XACT view
 xact_add_components( tree, opts.files, outputDir );
-#TODO sys.exit(0);
 
 # reformat XML
 _pretty_print(tree.getroot());
@@ -309,115 +334,4 @@ if opts.output:
         tree.write(f, encoding='unicode', xml_declaration=True);
 else:
     tree.write(sys.stdout, encoding='unicode', xml_declaration=True);
-
-#TODO if len(modules) > 0:
-#TODO     ns = {'xmlns:xsi':"http://www.w3.org/2001/XMLSchema-instance",
-#TODO     'xmlns:ipxact':"http://www.accellera.org/XMLSchema/IPXACT/1685-2014",
-#TODO     'xsi:schemaLocation':"http://www.accellera.org/XMLSchema/IPXACT/1685-2014 http://www.accellera.org/XMLSchema/IPXACT/1685-2014/index.xsd"
-#TODO     };
-#TODO 
-#TODO     module = None;
-#TODO     if opts.module:
-#TODO         for m in modules:
-#TODO             if m['name'] == opts.module:
-#TODO                 module = m;
-#TODO                 break;
-#TODO         if not module:
-#TODO             logging.error(f'Failed to find module \'{opts.module}\'!');
-#TODO             sys.exit(1);
-#TODO     else:
-#TODO         # use the first root module
-#TODO         roots = [m for m in modules if m['is_root']];
-#TODO         module = roots[0];
-#TODO 
-#TODO     print(anytree.RenderTree( get_module_hierarchy(modules, module['name']) ));
-#TODO 
-#TODO     comp = et.Element('ipxact:component', ns);
-#TODO 
-#TODO     vendor = et.SubElement(comp, 'ipxact:vendor');
-#TODO     library = et.SubElement(comp, 'ipxact:library');
-#TODO     name = et.SubElement(comp, 'ipxact:name');
-#TODO     version = et.SubElement(comp, 'ipxact:version');
-#TODO 
-#TODO     if opts.vendor:
-#TODO         vendor.text = opts.vendor;
-#TODO     else:
-#TODO         vendor.text = 'vendor';
-#TODO 
-#TODO     if opts.library:
-#TODO         library.text = opts.library;
-#TODO     else:
-#TODO         library.text = 'library';
-#TODO 
-#TODO     name.text = module['name'];
-#TODO 
-#TODO     if opts.version:
-#TODO         version.text = opts.version;
-#TODO     else:
-#TODO         version.text = '1.0.0';
-#TODO 
-#TODO     model = et.SubElement(comp, 'ipxact:model');
-#TODO 
-#TODO     views = et.SubElement(model, 'ipxact:views');
-#TODO 
-#TODO     rtlView = et.SubElement(views, 'ipxact:view');
-#TODO     viewName = et.SubElement(rtlView, 'ipxact:name');
-#TODO     viewName.text = 'rtl';
-#TODO     compInstRef = et.SubElement(rtlView, 'ipxact:componentInstantiationRef');
-#TODO     compInstRef.text = viewName.text + '_implementation';
-#TODO 
-#TODO     insts = et.SubElement(model, 'ipxact:instantiations');
-#TODO     compInst = et.SubElement(insts, 'ipxact:componentInstantiation');
-#TODO     instName = et.SubElement(compInst, 'ipxact:name');
-#TODO     instName.text = compInstRef.text;
-#TODO 
-#TODO     if 'parameters' in module:
-#TODO         params  = et.SubElement(compInst, 'ipxact:moduleParameters');
-#TODO         for param in module['parameters']:
-#TODO             params.append( param.etXact() );
-#TODO 
-#TODO     instFileSetRef = et.SubElement(compInst, 'ipxact:fileSetRef');
-#TODO     instFileSetRef = et.SubElement(instFileSetRef, 'ipxact:localName');
-#TODO     instFileSetRef.text = viewName.text + '_files';
-#TODO 
-#TODO     if 'ports' in module:
-#TODO         ports  = et.SubElement(model, 'ipxact:ports');
-#TODO         for port in module['ports']:
-#TODO             ports.append( port.etXact() );
-#TODO 
-#TODO     fileSets = et.SubElement(comp, 'ipxact:fileSets');
-#TODO     fileSet = et.SubElement(fileSets, 'ipxact:fileSet');
-#TODO     fileSetName = et.SubElement(fileSet, 'ipxact:name');
-#TODO     fileSetName.text = instFileSetRef.text;
-#TODO 
-#TODO     for p in get_files_in_hierarchy(modules, module['name']):
-#TODO         f = pathlib.Path(p);
-#TODO         fileSetFile = et.SubElement(fileSet, 'ipxact:file');
-#TODO         fileSetFileName = et.SubElement(fileSetFile, 'ipxact:name');
-#TODO 
-#TODO         if outputDir:
-#TODO             fileSetFileName.text = str(f.relative_to(outputDir));
-#TODO         else:
-#TODO             fileSetFileName.text = str(f.absolute());
-#TODO 
-#TODO         fileSetFileType = et.SubElement(fileSetFile, 'ipxact:fileType');
-#TODO         fileExt = f.suffix;
-#TODO         if fileExt:
-#TODO             if fileExt == 'v' or fileExt == 'vh':
-#TODO                 fileSetFileType.text = 'verilogSource';
-#TODO             else:
-#TODO                 fileSetFileType.text = 'systemVerilogSource';
-#TODO         else:
-#TODO             fileSetFileType.text = 'systemVerilogSource';
-#TODO 
-#TODO     _pretty_print(comp);
-#TODO     tree = et.ElementTree(comp);
-#TODO     #et.indent(tree, space="\t", level=0);
-#TODO     #et.dump(tree);
-#TODO 
-#TODO     if opts.output:
-#TODO         with open(str(opts.output), 'w') as f:
-#TODO             tree.write(f, encoding='unicode', xml_declaration=True);
-#TODO     else:
-#TODO         tree.write(sys.stdout, encoding='unicode', xml_declaration=True);
 
