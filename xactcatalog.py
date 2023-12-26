@@ -33,12 +33,29 @@ def _pretty_print(current, parent=None, index=-1, depth=0, indent='  '):
             current.tail = '\n' + (indent * (depth - 1))
 
 
-def compile_tag(tag: str, ns_uri: str = None):
-    if ns_uri:
-        return f'{{{ns_uri}}}{tag}';
-    else:
-        return tag;
+class XactNamespace(object):
 
+    ns = {'ipxact':"http://www.accellera.org/XMLSchema/IPXACT/1685-2014"};
+
+    def __init__(self, ns = None):
+        self.ns = ns;
+
+    def compileTag(self, tag:str, prefix:str = 'ipxact'):
+        ns = self.ns or XactNamespace.ns;
+        if ns and prefix is not None:
+            if prefix in ns:
+                tag = f'{{{ns[prefix]}}}{tag}';
+            else:
+                logging.error(f"Unregistered namespace prefix (geistered: {''.join([i for i in ns])}): {prefix}");
+                tag = prefix + ':' + tag;
+        elif ns and prefix is None and len(ns) == 1:
+            # when a sole namespace registered, then use it
+            prefix = list(ns.values())[0];
+            tag = f'{{{prefix}}}{tag}';
+        elif prefix is not None:
+            tag = prefix + ':' + tag;
+
+        return tag;
 
 def strip_tag(element: et.Element):
     if element is None:
@@ -121,8 +138,8 @@ def xact_add_components(tree, files:List[pathlib.Path], outputDir:str = None):
     if len(trees) == 0:
         return;
 
-    ns = {'ipxact':"http://www.accellera.org/XMLSchema/IPXACT/1685-2014"};
-    components = catalog.find('ipxact:components',ns);
+    ns = XactNamespace();
+    components = catalog.find('ipxact:components',XactNamespace.ns);
 
     elemseq = ['vendor', 'library', 'name', 'version',
             'description', 'catalogs'
@@ -133,7 +150,7 @@ def xact_add_components(tree, files:List[pathlib.Path], outputDir:str = None):
 
     for [comptree,path] in trees:
         comp = comptree.getroot();
-        if comp is None or comp.tag != compile_tag('component', ns['ipxact']):
+        if comp is None or comp.tag != ns.compileTag('component'):
             logging.error(f'Expecting `ipxact:component` root in {path}: {comp.tag}');
             continue;
 
@@ -148,7 +165,7 @@ def xact_add_components(tree, files:List[pathlib.Path], outputDir:str = None):
         # create new `components` element (if needed)
         if components is None:
             logging.warning(f'No `ipxact:components` element found!');
-            components = et.Element('ipxact:components');
+            components = et.Element(ns.compileTag('components'));
     
             predecesors = elemseq[:elemseq.index('components')];
             inserted = False;
@@ -178,10 +195,10 @@ def xact_add_components(tree, files:List[pathlib.Path], outputDir:str = None):
 
         # add new component
         if comp is None:
-            comp = et.Element('ipxact:ipxactFile');
-            e = et.Element('ipxact:vlnv', **vlnv.toDict());
+            comp = et.Element(ns.compileTag('ipxactFile'));
+            e = et.Element(ns.compileTag('vlnv'), **vlnv.toDict());
             comp.append(e);
-            e = et.Element('ipxact:name');
+            e = et.Element(ns.compileTag('name'));
             if outputDir:
                 e.text = str(path.relative_to(outputDir));
             else:
@@ -241,6 +258,7 @@ for p,u in ns.items():
     logging.debug(f"registering namespace {p}:{u}");
     et.register_namespace(p, u);
 
+ns = XactNamespace();
 tree = None;
 if opts.xact:
     try:
@@ -252,20 +270,18 @@ if opts.xact:
 if not tree:
     # proper IP-XACT 2014 XML namespaces
     xactns = {'xmlns:xsi':"http://www.w3.org/2001/XMLSchema-instance",
-    'xmlns:ipxact':"http://www.accellera.org/XMLSchema/IPXACT/1685-2014",
     'xsi:schemaLocation':"http://www.accellera.org/XMLSchema/IPXACT/1685-2014 http://www.accellera.org/XMLSchema/IPXACT/1685-2014/index.xsd"
     };
 
     # new root element
-    catalog = et.Element(compile_tag('catalog',ns['ipxact']), xactns);
+    catalog = et.Element(ns.compileTag('catalog'), xactns);
 
     # default XML element values (unless relevant options defined
     # through CLI options)
     defaults = {'version':'0.0.0', 'name':'manifest'};
 
     for tag in ['vendor', 'library', 'name', 'version', 'description']:
-        #TODO e = et.SubElement(catalog, 'ipxact:'+tag);
-        e = et.SubElement(catalog, compile_tag(tag,ns['ipxact']));
+        e = et.SubElement(catalog, ns.compileTag(tag));
 
         if hasattr(opts,tag) and getattr(opts,tag) is not None:
             e.text = str(getattr(opts,tag));
@@ -279,16 +295,16 @@ if not tree:
 else:
     # test if root is an ipxact component
     catalog = tree.getroot();
-    if catalog is None or catalog.tag != compile_tag('catalog', ns['ipxact']):
+    if catalog is None or catalog.tag != ns.compileTag('catalog'):
         logging.error(f'Expecting `ipxact:catalog` root in {opts.xact}: {catalog.tag}');
         sys.exit(1);
 
     # sanity check for required VLNV elements
     for i,tag in enumerate(['vendor','library','name','version']):
         fulltag = 'ipxact:'+tag;
-        elem = catalog.find(fulltag, ns);
+        elem = catalog.find(fulltag, XactNamespace.ns);
         if elem is None:
-            elem = et.Element(fulltag);
+            elem = et.Element(ns.compileTag(tag));
             catalog.insert(i,elem);
             if hasattr(opts,tag) and getattr(opts,tag) is not None:
                 logging.warning(f'Missing `{fulltag}` element in {opts.xact}!');
@@ -305,10 +321,10 @@ else:
 
 # add description (if defined)
 if opts.description:
-    description = catalog.find('ipxact:description',ns);
+    description = catalog.find('ipxact:description', XactNamespace.ns);
     if description is None:
         logging.warning(f'No `ipxact:description` element found in catalog!');
-        description = et.Element(compile_tag('description',ns['ipxact']));
+        description = et.Element(ns.compileTag('description'));
     
         predecesors = ['vendor','library','name','version'];
         inserted = False;

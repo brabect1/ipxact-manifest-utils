@@ -57,6 +57,31 @@ class PreOrderDepthTreeIterator(verible_verilog_syntax._TreeIteratorBase):
     yield from self._iter_tree_depth(tree, self.depth)
 
 
+class XactNamespace(object):
+
+    ns = {'ipxact':"http://www.accellera.org/XMLSchema/IPXACT/1685-2014"};
+
+    def __init__(self, ns = None):
+        self.ns = ns;
+
+    def compileTag(self, tag:str, prefix:str = 'ipxact'):
+        ns = self.ns or XactNamespace.ns;
+        if ns and prefix is not None:
+            if prefix in ns:
+                tag = f'{{{ns[prefix]}}}{tag}';
+            else:
+                logging.error(f"Unregistered namespace prefix (geistered: {''.join([i for i in ns])}): {prefix}");
+                tag = prefix + ':' + tag;
+        elif ns and prefix is None and len(ns) == 1:
+            # when a sole namespace registered, then use it
+            prefix = list(ns.values())[0];
+            tag = f'{{{prefix}}}{tag}';
+        elif prefix is not None:
+            tag = prefix + ':' + tag;
+
+        return tag;
+
+
 class TypeDimension(object):
 
     def __init__(self, left, right):
@@ -111,14 +136,15 @@ class Port(object):
         return ' '.join(attrs);
 
     def etXact(self):
-        p = et.Element('ipxact:port');
+        ns = XactNamespace();
+        p = et.Element(ns.compileTag('port'));
 
-        name = et.SubElement(p, 'ipxact:name');
+        name = et.SubElement(p, ns.compileTag('name'));
         name.text = self.name;
 
-        signal = et.SubElement(p, 'ipxact:wire');
+        signal = et.SubElement(p, ns.compileTag('wire'));
 
-        direction = et.SubElement(signal, 'ipxact:direction');
+        direction = et.SubElement(signal, ns.compileTag('direction'));
         if self.direction in Port.lutDirection:
             direction.text = Port.lutDirection[self.direction];
         else:
@@ -126,14 +152,14 @@ class Port(object):
             direction.text = Port.lutDirection['input'];
 
         if self.dimensions and len(self.dimensions) > 0:
-            vectors= et.SubElement(signal, 'ipxact:vectors');
+            vectors= et.SubElement(signal, ns.compileTag('vectors'));
             for dimension in self.dimensions:
                 vectors.append(dimension.etXact());
 
         if self.datatype:
-            wiredefs = et.SubElement(signal, 'ipxact:wireTypeDefs');
-            wiredef = et.SubElement(wiredefs, 'ipxact:wireTypeDef');
-            typename = et.SubElement(wiredef, 'ipxact:typeName');
+            wiredefs = et.SubElement(signal, ns.compileTag('wireTypeDefs'));
+            wiredef = et.SubElement(wiredefs, ns.compileTag('wireTypeDef'));
+            typename = et.SubElement(wiredef, ns.compileTag('typeName'));
             typename.text = self.datatype;
 
         return p;
@@ -172,13 +198,14 @@ class Parameter(object):
 
         return ' '.join(attrs);
 
-    def etXact(self, elementTag='ipxact:moduleParameter'):
-        p = et.Element(elementTag);
+    def etXact(self, elementTag='moduleParameter'):
+        ns = XactNamespace();
+        p = et.Element(ns.compileTag(elementTag));
 
-        name = et.SubElement(p, 'ipxact:name');
+        name = et.SubElement(p, ns.compileTag('name'));
         name.text = self.name;
 
-        value = et.SubElement(p, 'ipxact:value');
+        value = et.SubElement(p, ns.compileTag('value'));
         if hasattr(self,'value') and self.value:
             value.text = str(self.value);
         else:
@@ -487,15 +514,22 @@ elif opts.rwd:
 else:
     outputDir = None;
 
+# ElementTree namespaces for XML parsing
+# (the proper IP-XACT/XML namespaces shall use `xmlns:` prefix to
+# namespace names; however, ElementTree does not support it for
+# `ElementTree.register_namespace()`.)
+ns = {'xsi':"http://www.w3.org/2001/XMLSchema-instance",
+'ipxact':"http://www.accellera.org/XMLSchema/IPXACT/1685-2014"
+};
+
+for p,u in ns.items():
+    logging.debug(f"registering namespace {p}:{u}");
+    et.register_namespace(p, u);
+
 parser = verible_verilog_syntax.VeribleVerilogSyntax(executable=parser_path);
 modules = process_files(parser, file_paths);
 
 if len(modules) > 0:
-    ns = {'xmlns:xsi':"http://www.w3.org/2001/XMLSchema-instance",
-    'xmlns:ipxact':"http://www.accellera.org/XMLSchema/IPXACT/1685-2014",
-    'xsi:schemaLocation':"http://www.accellera.org/XMLSchema/IPXACT/1685-2014 http://www.accellera.org/XMLSchema/IPXACT/1685-2014/index.xsd"
-    };
-
     module = None;
     if opts.module:
         for m in modules:
@@ -512,75 +546,77 @@ if len(modules) > 0:
 
     print(anytree.RenderTree( get_module_hierarchy(modules, module['name']) ));
 
-    comp = et.Element('ipxact:component', ns);
+    xactns = {'xmlns:xsi':"http://www.w3.org/2001/XMLSchema-instance",
+    'xsi:schemaLocation':"http://www.accellera.org/XMLSchema/IPXACT/1685-2014 http://www.accellera.org/XMLSchema/IPXACT/1685-2014/index.xsd"
+    };
+    ns = XactNamespace();
 
-    vendor = et.SubElement(comp, 'ipxact:vendor');
-    library = et.SubElement(comp, 'ipxact:library');
-    name = et.SubElement(comp, 'ipxact:name');
-    version = et.SubElement(comp, 'ipxact:version');
+    comp = et.Element(ns.compileTag('component'), xactns);
 
-    if opts.vendor:
-        vendor.text = opts.vendor;
-    else:
-        vendor.text = 'vendor';
+    # default XML element values (unless relevant options defined
+    # through CLI options)
+    defaults = {'version':'0.0.0', 'name':'manifest'};
 
-    if opts.library:
-        library.text = opts.library;
-    else:
-        library.text = 'library';
+    for tag in ['vendor', 'library', 'name', 'version']:
+        e = et.SubElement(comp, ns.compileTag(tag));
 
-    name.text = module['name'];
+        # treat `name` element specifically
+        if tag == 'name':
+            e.text = module['name'];
+            continue;
 
-    if opts.version:
-        version.text = opts.version;
-    else:
-        version.text = '1.0.0';
+        if hasattr(opts,tag) and getattr(opts,tag) is not None:
+            e.text = str(getattr(opts,tag));
+        elif tag in defaults:
+            e.text = defaults[tag];
+        else:
+            e.text = tag;
 
-    model = et.SubElement(comp, 'ipxact:model');
+    model = et.SubElement(comp, ns.compileTag('model'));
 
-    views = et.SubElement(model, 'ipxact:views');
+    views = et.SubElement(model, ns.compileTag('views'));
 
-    rtlView = et.SubElement(views, 'ipxact:view');
-    viewName = et.SubElement(rtlView, 'ipxact:name');
+    rtlView = et.SubElement(views, ns.compileTag('view'));
+    viewName = et.SubElement(rtlView, ns.compileTag('name'));
     viewName.text = 'rtl';
-    compInstRef = et.SubElement(rtlView, 'ipxact:componentInstantiationRef');
+    compInstRef = et.SubElement(rtlView, ns.compileTag('componentInstantiationRef'));
     compInstRef.text = viewName.text + '_implementation';
 
-    insts = et.SubElement(model, 'ipxact:instantiations');
-    compInst = et.SubElement(insts, 'ipxact:componentInstantiation');
-    instName = et.SubElement(compInst, 'ipxact:name');
+    insts = et.SubElement(model, ns.compileTag('instantiations'));
+    compInst = et.SubElement(insts, ns.compileTag('componentInstantiation'));
+    instName = et.SubElement(compInst, ns.compileTag('name'));
     instName.text = compInstRef.text;
 
     if 'parameters' in module:
-        params  = et.SubElement(compInst, 'ipxact:moduleParameters');
+        params  = et.SubElement(compInst, ns.compileTag('moduleParameters'));
         for param in module['parameters']:
             params.append( param.etXact() );
 
-    instFileSetRef = et.SubElement(compInst, 'ipxact:fileSetRef');
-    instFileSetRef = et.SubElement(instFileSetRef, 'ipxact:localName');
+    instFileSetRef = et.SubElement(compInst, ns.compileTag('fileSetRef'));
+    instFileSetRef = et.SubElement(instFileSetRef, ns.compileTag('localName'));
     instFileSetRef.text = viewName.text + '_files';
 
     if 'ports' in module:
-        ports  = et.SubElement(model, 'ipxact:ports');
+        ports  = et.SubElement(model, ns.compileTag('ports'));
         for port in module['ports']:
             ports.append( port.etXact() );
 
-    fileSets = et.SubElement(comp, 'ipxact:fileSets');
-    fileSet = et.SubElement(fileSets, 'ipxact:fileSet');
-    fileSetName = et.SubElement(fileSet, 'ipxact:name');
+    fileSets = et.SubElement(comp, ns.compileTag('fileSets'));
+    fileSet = et.SubElement(fileSets, ns.compileTag('fileSet'));
+    fileSetName = et.SubElement(fileSet, ns.compileTag('name'));
     fileSetName.text = instFileSetRef.text;
 
     for p in get_files_in_hierarchy(modules, module['name']):
         f = pathlib.Path(p);
-        fileSetFile = et.SubElement(fileSet, 'ipxact:file');
-        fileSetFileName = et.SubElement(fileSetFile, 'ipxact:name');
+        fileSetFile = et.SubElement(fileSet, ns.compileTag('file'));
+        fileSetFileName = et.SubElement(fileSetFile, ns.compileTag('name'));
 
         if outputDir:
             fileSetFileName.text = str(f.relative_to(outputDir));
         else:
             fileSetFileName.text = str(f.absolute());
 
-        fileSetFileType = et.SubElement(fileSetFile, 'ipxact:fileType');
+        fileSetFileType = et.SubElement(fileSetFile, ns.compileTag('fileType'));
         fileExt = f.suffix;
         if fileExt:
             if fileExt == 'v' or fileExt == 'vh':
@@ -592,8 +628,6 @@ if len(modules) > 0:
 
     _pretty_print(comp);
     tree = et.ElementTree(comp);
-    #et.indent(tree, space="\t", level=0);
-    #et.dump(tree);
 
     if opts.output:
         with open(str(opts.output), 'w') as f:

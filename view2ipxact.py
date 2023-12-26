@@ -33,33 +33,51 @@ def _pretty_print(current, parent=None, index=-1, depth=0, indent='  '):
             current.tail = '\n' + (indent * (depth - 1))
 
 
-def get_tag(tag: str, ns_uri: str = None):
-    if ns_uri:
-        return f'{{{ns_uri}}}{tag}';
-    else:
+class XactNamespace(object):
+
+    ns = {'ipxact':"http://www.accellera.org/XMLSchema/IPXACT/1685-2014"};
+
+    def __init__(self, ns = None):
+        self.ns = ns;
+
+    def compileTag(self, tag:str, prefix:str = 'ipxact'):
+        ns = self.ns or XactNamespace.ns;
+        if ns and prefix is not None:
+            if prefix in ns:
+                tag = f'{{{ns[prefix]}}}{tag}';
+            else:
+                logging.error(f"Unregistered namespace prefix (geistered: {''.join([i for i in ns])}): {prefix}");
+                tag = prefix + ':' + tag;
+        elif ns and prefix is None and len(ns) == 1:
+            # when a sole namespace registered, then use it
+            prefix = list(ns.values())[0];
+            tag = f'{{{prefix}}}{tag}';
+        elif prefix is not None:
+            tag = prefix + ':' + tag;
+
         return tag;
 
 def xact_add_view(tree, viewname:str, files:List[pathlib.Path], outputDir:str = None):
     if tree is None:
         return;
 
-    ns = {'ipxact':"http://www.accellera.org/XMLSchema/IPXACT/1685-2014"};
+    ns = XactNamespace();
     comp = tree.getroot();
-    if comp is None or comp.tag != get_tag('component', ns['ipxact']):
+    if comp is None or comp.tag != ns.compileTag('component'):
         logging.error(f'Expecting `ipxact:component` root in {opts.xact}: {comp.tag}');
         return;
 
     compinstname = viewname + '_implementation';
     filesetname = viewname + '_files';
 
-    model = comp.find('ipxact:model',ns);
-    views = comp.find('ipxact:model/ipxact:views',ns);
-    insts = comp.find('ipxact:model/ipxact:instantiations',ns);
-    filesets = comp.find('ipxact:fileSets',ns);
+    model = comp.find('ipxact:model',XactNamespace.ns);
+    views = comp.find('ipxact:model/ipxact:views',XactNamespace.ns);
+    insts = comp.find('ipxact:model/ipxact:instantiations',XactNamespace.ns);
+    filesets = comp.find('ipxact:fileSets',XactNamespace.ns);
 
     # sanity check that the new view does not exit yet
     if views is not None:
-        names = views.findall('ipxact:view/ipxact:name',ns);
+        names = views.findall('ipxact:view/ipxact:name',XactNamespace.ns);
         for e in names:
             if e.text == viewname:
                 logging.error(f'View `{viewname}` already exists!');
@@ -67,7 +85,7 @@ def xact_add_view(tree, viewname:str, files:List[pathlib.Path], outputDir:str = 
 
     # sanity check that the new componentInstantiation does not exit yet
     if insts is not None:
-        names = insts.findall('ipxact:componentInstantiation/ipxact:name',ns);
+        names = insts.findall('ipxact:componentInstantiation/ipxact:name',XactNamespace.ns);
         for e in names:
             if e.text == compinstname:
                 logging.error(f'Component instantiation `{compinstname}` already exists!');
@@ -75,7 +93,7 @@ def xact_add_view(tree, viewname:str, files:List[pathlib.Path], outputDir:str = 
 
     # sanity check that the new fileset does not exit yet
     if filesets is not None:
-        names = filesets.findall('ipxact:fileset/ipxact:name',ns);
+        names = filesets.findall('ipxact:fileset/ipxact:name',XactNamespace.ns);
         for e in names:
             if e.text == filesetname:
                 logging.error(f'File set `{filesetname}` already exists!');
@@ -92,7 +110,7 @@ def xact_add_view(tree, viewname:str, files:List[pathlib.Path], outputDir:str = 
     # create new model (if needed)
     if model is None:
         logging.warning(f'No `ipxact:model` element found!');
-        model = et.Element('ipxact:model');
+        model = et.Element(ns.compileTag('model'));
 
         predecesors = elemseq[:elemseq.index('model')];
         inserted = False;
@@ -107,43 +125,43 @@ def xact_add_view(tree, viewname:str, files:List[pathlib.Path], outputDir:str = 
     # create new views element (if needed)
     if views is None:
         logging.warning(f'No `ipxact:views` element found!');
-        views = et.Element('ipxact:views');
+        views = et.Element(ns.compileTag('views'));
 
         # `views` is the 1st element under `model`
         model.insert(0,views);
 
     # create new view element
-    view = et.SubElement(views, 'ipxact:view');
-    e = et.Element('ipxact:name');
+    view = et.SubElement(views, ns.compileTag('view'));
+    e = et.Element(ns.compileTag('name'));
     e.text = viewname;
     view.append(e);
-    e = et.Element('ipxact:componentInstantiationRef');
+    e = et.Element(ns.compileTag('componentInstantiationRef'));
     e.text = compinstname;
     view.append(e);
 
     # create new instantiations element (if needed)
     if insts is None:
         logging.warning(f'No `ipxact:instantiations` element found!');
-        views = et.Element('ipxact:instantiations');
+        insts = et.Element(ns.compileTag('instantiations'));
 
         # `instantiations` is the 2nd element under `model`
-        model.insert(1,views);
+        model.insert(1,insts);
 
     # create new component instantiation element
-    compinst = et.SubElement(insts, 'ipxact:componentInstantiation');
-    e = et.Element('ipxact:name');
+    compinst = et.SubElement(insts, ns.compileTag('componentInstantiation'));
+    e = et.Element(ns.compileTag('name'));
     e.text = compinstname;
     compinst.append(e);
-    e = et.Element('ipxact:fileSetRef');
+    e = et.Element(ns.compileTag('fileSetRef'));
     compinst.append(e);
-    e = et.Element('ipxact:localName');
+    e = et.Element(ns.compileTag('localName'));
     e.text = filesetname;
     compinst[-1].append(e);
 
     # create new filesets element (if needed)
     if filesets is None:
         logging.warning(f'No `ipxact:filesets` element found!');
-        filesets = et.Element('ipxact:fileSets');
+        filesets = et.Element(ns.compileTag('fileSets'));
 
         predecesors = elemseq[:elemseq.index('fileSets')];
         inserted = False;
@@ -156,22 +174,22 @@ def xact_add_view(tree, viewname:str, files:List[pathlib.Path], outputDir:str = 
         if not inserted: comp.append(filesets);
 
     # create new fileset element
-    fileset = et.SubElement(filesets,'ipxact:fileSet');
-    e = et.Element('ipxact:name');
+    fileset = et.SubElement(filesets,ns.compileTag('fileSet'));
+    e = et.Element(ns.compileTag('name'));
     e.text = filesetname;
     fileset.append(e);
-    e = et.Element('ipxact:localName');
+    e = et.Element(ns.compileTag('localName'));
     e.text = filesetname;
     for f in files:
-        fileSetFile = et.SubElement(fileset, 'ipxact:file');
-        e = et.SubElement(fileSetFile, 'ipxact:name');
+        fileSetFile = et.SubElement(fileset, ns.compileTag('file'));
+        e = et.SubElement(fileSetFile, ns.compileTag('name'));
 
         if outputDir:
             e.text = str(f.relative_to(outputDir));
         else:
             e.text = str(f.absolute());
 
-        e = et.SubElement(fileSetFile, 'ipxact:fileType');
+        e = et.SubElement(fileSetFile, ns.compileTag('fileType'));
         e.text = 'unknown';
 
     return;
@@ -226,6 +244,7 @@ for p,u in ns.items():
     logging.debug(f"registering namespace {p}:{u}");
     et.register_namespace(p, u);
 
+ns = XactNamespace();
 tree = None;
 if opts.xact:
     try:
@@ -237,51 +256,40 @@ if opts.xact:
 if not tree:
     # proper IP-XACT 2014 XML namespaces
     xactns = {'xmlns:xsi':"http://www.w3.org/2001/XMLSchema-instance",
-    'xmlns:ipxact':"http://www.accellera.org/XMLSchema/IPXACT/1685-2014",
     'xsi:schemaLocation':"http://www.accellera.org/XMLSchema/IPXACT/1685-2014 http://www.accellera.org/XMLSchema/IPXACT/1685-2014/index.xsd"
     };
 
-    comp = et.Element('ipxact:component', xactns);
+    comp = et.Element(ns.compileTag('component'), xactns);
 
-    vendor = et.SubElement(comp, 'ipxact:vendor');
-    library = et.SubElement(comp, 'ipxact:library');
-    name = et.SubElement(comp, 'ipxact:name');
-    version = et.SubElement(comp, 'ipxact:version');
+    # default XML element values (unless relevant options defined
+    # through CLI options)
+    defaults = {'version':'0.0.0', 'name':'manifest'};
 
-    if opts.vendor:
-        vendor.text = opts.vendor;
-    else:
-        vendor.text = 'vendor';
+    for tag in ['vendor', 'library', 'name', 'version', 'description']:
+        e = et.SubElement(comp, ns.compileTag(tag));
 
-    if opts.library:
-        library.text = opts.library;
-    else:
-        library.text = 'library';
-
-    if hasattr(opts,'nanme') and opts.name:
-        name.text = opts.name;
-    else:
-        name.text = 'name';
-
-    if opts.version:
-        version.text = opts.version;
-    else:
-        version.text = '0.0.0';
+        if hasattr(opts,tag) and getattr(opts,tag) is not None:
+            e.text = str(getattr(opts,tag));
+        elif tag in defaults:
+            e.text = defaults[tag];
+        else:
+            e.text = tag;
 
     tree = et.ElementTree(comp);
+
 else:
     # test if root is an ipxact component
     comp = tree.getroot();
-    if comp is None or comp.tag != get_tag('component', ns['ipxact']):
+    if comp is None or comp.tag != ns.compileTag('component'):
         logging.error(f'Expecting `ipxact:component` root in {opts.xact}: {comp.tag}');
         sys.exit(1);
 
     # sanity check for required VLNV elements
     for i,tag in enumerate(['vendor','library','name','version']):
         fulltag = 'ipxact:'+tag;
-        elem = comp.find(fulltag, ns);
+        elem = comp.find(fulltag, XactNamespace.ns);
         if elem is None:
-            elem = et.Element(fulltag);
+            elem = et.Element(ns.compileTag(tag));
             comp.insert(i,elem);
             if hasattr(opts,tag) and getattr(opts,tag) is not None:
                 logging.warning(f'Missing `{fulltag}` element in {opts.xact}!');
@@ -298,7 +306,6 @@ else:
 
 # add new IP-XACT view
 xact_add_view( tree, opts.viewname, opts.files, outputDir );
-#TODO sys.exit(0);
 
 # reformat XML
 _pretty_print(tree.getroot());
