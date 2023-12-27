@@ -82,7 +82,7 @@ class Vlnv(object):
         return ', '.join(l);
 
     def __eq__(self, other):
-        if other is None or not issubclass(other,Vlnv):
+        if other is None or not isinstance(other,Vlnv):
             return False;
         else:
             res = True;
