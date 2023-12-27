@@ -169,6 +169,8 @@ except RDLCompileError:
     sys.exit(1)
 
 exporter = CustomIPXACTExporter()
+## exporter.ns = 'spirit:';
+## exporter.standard = Standard.IEEE_1685_2009
 
 if opts.output is None:
     exporter.write_out(root.top)
