@@ -14,7 +14,6 @@
 
 import sys
 import pathlib
-import anytree
 import logging
 import argparse
 import xml.etree.ElementTree as et
