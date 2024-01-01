@@ -100,12 +100,12 @@ class Vlnv(object):
         return {a: getattr(self,a) for a in Vlnv.attrs};
 
     @classmethod
-    def fromElement(cls, element: et.Element):
+    def fromElements(cls, element: et.Element):
         if element is None:
             return None;
     
         vlnv = {};
-        for i,tag in enumerate(Vlnv.attrs):
+        for tag in Vlnv.attrs:
             fulltag = 'ipxact:'+tag;
             value = None;
             for e in element:
@@ -115,7 +115,23 @@ class Vlnv(object):
                     value = e.text;
                     break;
             if value is None:
-                logging.error(f'Missing `{fulltag}` element in {strip_tag(element)}!');
+                logging.error(f'Missing `{fulltag}` VLNV element in {strip_tag(element)} element!');
+            vlnv[tag] = value;
+    
+        return Vlnv(**vlnv);
+
+    @classmethod
+    def fromAttributes(cls, element: et.Element):
+        if element is None:
+            return None;
+    
+        vlnv = {};
+        for tag in Vlnv.attrs:
+            value = None;
+            if tag in element.attrib:
+                value = element.attrib[tag];
+            else:
+                logging.error(f'Missing `{tag}` VLNV attribute in {strip_tag(element)} element!');
             vlnv[tag] = value;
     
         return Vlnv(**vlnv);
@@ -154,7 +170,7 @@ def xact_add_components(tree, files:List[pathlib.Path], outputDir:str = None):
             logging.error(f'Expecting `ipxact:component` root in {path}: {comp.tag}');
             continue;
 
-        vlnv = Vlnv.fromElement(comp);
+        vlnv = Vlnv.fromElements(comp);
         logging.debug(f'{path} vlnv: {vlnv}');
 
         # skip adding a new element if not all VLNV defined
@@ -187,8 +203,11 @@ def xact_add_components(tree, files:List[pathlib.Path], outputDir:str = None):
                 logging.error(f'Unexpected element under `ipxact:components`: {tag}');
                 continue;
 
+            # get `vlnv` element
+            evlnv = e.find(ns.compileTag('vlnv'), ns.ns);
+
             # check vlnv
-            if vlnv == Vlnv.fromElement(e):
+            if evlnv is not None and vlnv == Vlnv.fromAttributes(evlnv):
                 logging.error(f'Component already regoistered: {path}');
                 comp = e;
                 break;
