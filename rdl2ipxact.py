@@ -88,12 +88,51 @@ def add_mmap(node: Union[AddrmapNode, RootNode], comp: minidom.Element, ns: Xact
     if ns is None: ns = XactNamespace();
 
     dom = comp.ownerDocument;
-    mmaps = dom.createElement(ns.compileTag("memoryMaps"));
-    comp.appendChild(mmaps);
+
+    # get existing `memoryMaps` (if already exists)
+    mmaps =  None;
+    if comp.hasChildNodes():
+        for n in comp.childNodes:
+            if n.nodeType != minidom.Node.ELEMENT_NODE: continue;
+            if n.tagName == ns.compileTag('memoryMaps'):
+                mmaps = n;
+                break;
+
+    # create new `memoryMaps` (if none exists)
+    if mmaps is None:
+        mmaps = dom.createElement(ns.compileTag("memoryMaps"));
+
+        # insert into correct position (so that resulting XML validates
+        # to IP-XACT schema)
+        inserted = False;
+        if comp.hasChildNodes():
+            elemseq = ['vendor', 'library', 'name', 'version',
+                    'busInterfaces', 'indirectInterfaces', 'channels',
+                    'remapStates', 'addressSpaces', 'memoryMaps',
+                    'model', 'componentGenerators', 'choices',
+                    'fileSets', 'whiteboxElements', 'cpus',
+                    'otherClockDrivers', 'resetTypes', 'description',
+                    'parameters', 'assertions', 'vendorExtensions'];
+
+            predecesors = elemseq[:elemseq.index('memoryMaps')];
+            for n in comp.childNodes:
+                if n.nodeType != minidom.Node.ELEMENT_NODE: continue;
+                _, _, tag = n.tagName.rpartition(':');
+                if tag not in predecesors:
+                    comp.insertBefore(mmaps,n);
+                    inserted = True;
+                    break;
+
+        if not inserted:
+            comp.appendChild(mmaps);
+
+    # get existing `memoryMaps.memoryMap` (if already exists)
+    #TODO ...
 
     exporter = IPXACTExporter();
     exporter.doc = dom;
 
+    #---->>>> GPL licensed code (from peakrdl_ipxact.Exporter)
     # Determine if top-level node should be exploded across multiple
     # addressBlock groups
     explode = False
@@ -123,12 +162,15 @@ def add_mmap(node: Union[AddrmapNode, RootNode], comp: minidom.Element, ns: Xact
 
         if (non_addrblockable_children == 0) and (addrblockable_children >= 1):
             explode = True
+    #<<<<----
 
     # Do the export!
     # --------------
     # top-node becomes the memoryMap
     mmap = dom.createElement(ns.compileTag("memoryMap"));
     mmaps.appendChild(mmap);
+
+    #---->>>> GPL licensed code (from peakrdl_ipxact.Exporter)
     if explode:
         exporter.add_nameGroup(mmap,
             node.inst_name,
@@ -150,6 +192,7 @@ def add_mmap(node: Union[AddrmapNode, RootNode], comp: minidom.Element, ns: Xact
 
         # Export top-level node as a single addressBlock
         exporter.add_addressBlock(mmap, node);
+    #<<<<----
 
 
 class CustomIPXACTExporter(IPXACTExporter):

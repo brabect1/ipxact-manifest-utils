@@ -4,6 +4,8 @@
 
 - vlog2ipxact
 
+  - do not add ``<moduleParameters>`` if there are none (XML validation would fail otherwise)
+
   - fix output port in Verilog
 
     example (problem with ``q`` recognized as ``in``, other potential problem is port type; root
@@ -19,6 +21,5 @@
 
 - rdl2ipxact
 
-  - add conversion to et
-  - put <memMaps> to correct place in element order
+  - test existing ``<memoryMap>``
 
