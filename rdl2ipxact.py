@@ -7,12 +7,26 @@ import logging
 
 from typing import Union, Optional, TYPE_CHECKING, Any
 from xml.dom import minidom
+import xml.etree.ElementTree as et
 
 from systemrdl import RDLCompiler, RDLCompileError
 from systemrdl.node import AddressableNode, RootNode, Node
 from systemrdl.node import AddrmapNode, MemNode
 from systemrdl.node import RegNode, RegfileNode, FieldNode
 from peakrdl_ipxact import IPXACTExporter, Standard
+
+
+# https://stackoverflow.com/a/65808327
+def _pretty_print(current, parent=None, index=-1, depth=0, indent='  '):
+    for i, node in enumerate(current):
+        _pretty_print(node, current, i, depth + 1, indent)
+    if parent is not None:
+        if index == 0:
+            parent.text = '\n' + (indent * depth)
+        else:
+            parent[index - 1].tail = '\n' + (indent * depth)
+        if index == len(parent) - 1:
+            current.tail = '\n' + (indent * (depth - 1))
 
 
 class XactNamespace(object):
@@ -38,6 +52,33 @@ class XactNamespace(object):
             tag = prefix + ':' + tag;
 
         return tag;
+
+
+def minidom2elementtree(node: minidom.Node):
+    if node is None:
+        return None;
+
+    try:
+        s = node.toxml();
+
+        # ElementTree namespaces for XML parsing
+        # (the proper IP-XACT/XML namespaces shall use `xmlns:` prefix to
+        # namespace names; however, ElementTree does not support it for
+        # `ElementTree.register_namespace()`.)
+        ns = {'xsi':"http://www.w3.org/2001/XMLSchema-instance",
+        'ipxact':"http://www.accellera.org/XMLSchema/IPXACT/1685-2014"
+        };
+
+        for p,u in ns.items():
+            logging.debug(f"registering namespace {p}:{u}");
+            et.register_namespace(p, u);
+
+        root = et.fromstring(s);
+        return et.ElementTree(root);
+
+    except Exception as e:
+        logging.error(e);
+        return None;
 
 
 def add_mmap(node: Union[AddrmapNode, RootNode], comp: minidom.Element, ns: XactNamespace):
@@ -379,16 +420,21 @@ if not dom:
 if dom:
     comp = dom.documentElement;
     add_mmap(root.top, comp, ns);
-    sys.stdout.buffer.write( dom.toprettyxml(indent='  ', newl='\n', encoding='UTF-8'));
-sys.exit(0); #TODO
 
-# create RDL to XACT converter
-exporter = CustomIPXACTExporter()
-## exporter.ns = 'spirit:';
-## exporter.standard = Standard.IEEE_1685_2009
+    #TODO # printing using minidom formattinf/pretty print
+    #TODO sys.stdout.buffer.write( dom.toprettyxml(indent='  ', newl='\n', encoding='UTF-8'));
 
-if opts.output is None:
-    exporter.write_out(root.top)
-else:
-    with open(opts.output, 'w') as f:
-        exporter.write_out(root.top, f)
+    # convert from minidom to ElementTree
+    # (as minidom pretty print sucks)
+    tree = minidom2elementtree(dom);
+
+    # reformat XML
+    _pretty_print(tree.getroot());
+
+    # print XML
+    if opts.output:
+        with open(str(opts.output), 'w') as f:
+            tree.write(f, encoding='unicode', xml_declaration=True);
+    else:
+        tree.write(sys.stdout, encoding='unicode', xml_declaration=True);
+
