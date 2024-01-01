@@ -266,14 +266,45 @@ parser.add_argument('--xact-name', dest='name', required=False, type=str,
         help='IP-XACT component name.');
 parser.add_argument('--rwd', dest='rwd', required=False, type=pathlib.Path,
         help='Relative Working Directory (RWD), which to make file paths relative to. Applies only if `output` not specified.');
+parser.add_argument('--log-level', dest='loglevel', required=False, type=str, default='ERROR',
+        help='Logging severity, one of: DEBUG, INFO, WARNING, ERROR, FATAL. Defaults to ERROR.');
+parser.add_argument('-l', '--log-file', dest='logfile', required=False, type=pathlib.Path, default=None,
+        help='Path to a log file. Defaults to stderr if none given.');
 parser.add_argument('file', type=pathlib.Path,
         help='System RDL file to convert');
 
 # parse CLI options
 opts = parser.parse_args();
 
+# default logging setup
+logging.basicConfig(level=logging.ERROR);
+
+# setup logging destination (file or stderr)
+# (stderr is already set as default in the logging setup)
+if opts.logfile is not None:
+    logFileHandler = None;
+    try:
+        # using `'w'` will make the FileHandler overwrite the log file rather than
+        # append to it
+        logFileHandler = logging.FileHandler(str(opts.logfile),'w');
+    except Exception as e:
+        logging.error(e);
+
+    if logFileHandler is not None:
+        rootLogger = logging.getLogger();
+        fmt = None;
+        if len(rootLogger.handlers) > 0:
+            fmt = rootLogger.handlers[0].formatter;
+        if fmt is not None:
+            logFileHandler.setFormatter(fmt);
+        rootLogger.handlers = []; # remove default handlers
+        rootLogger.addHandler(logFileHandler);
+
 # setup logging level
-logging.basicConfig(level=logging.DEBUG);
+try:
+    logging.getLogger().setLevel(opts.loglevel);
+except Exception as e:
+    logging.error(e);
 
 # output directory
 # (`None` means to use absolute paths)
