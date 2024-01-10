@@ -228,176 +228,178 @@ def xact_add_components(tree, files:List[pathlib.Path], outputDir:str = None):
     return;
 
 
-parser = argparse.ArgumentParser(description='Creates or adds to references to IP-XACT 2014 components into IP-XACT 2014 catalog.');
-parser.add_argument('-o', '--output', dest='output', required=False, type=pathlib.Path,
-        help='IP-XACT output file, stdout if not given.');
-#TODO parser.add_argument('-m', '--module', dest='module', required=False, type=str,
-#TODO         help='Name of the root module.');
-parser.add_argument('--xact', dest='xact', required=False, type=pathlib.Path,
-        help='IP-XACT 2014 catalog to be updated with component refereces.')
-parser.add_argument('--xact-library', dest='library', required=False, type=str,
-        help='IP-XACT catalog library name.');
-parser.add_argument('--xact-version', dest='version', required=False, type=str,
-        help='IP-XACT catalog version number.');
-parser.add_argument('--xact-vendor', dest='vendor', required=False, type=str,
-        help='IP-XACT catalog vendor name.');
-parser.add_argument('--xact-name', dest='name', required=False, type=str, default='mainfest',
-        help='IP-XACT catalog name.');
-parser.add_argument('--xact-description', dest='description', required=False, type=str, default='mainfest',
-        help='IP-XACT catalog/library description.');
-parser.add_argument('--rwd', dest='rwd', required=False, type=pathlib.Path,
-        help='Relative Working Directory (RWD), which to make file paths relative to. Applies only if `output` not specified.');
-parser.add_argument('--log-level', dest='loglevel', required=False, type=str, default='ERROR',
-        help='Logging severity, one of: DEBUG, INFO, WARNING, ERROR, FATAL. Defaults to ERROR.');
-parser.add_argument('-l', '--log-file', dest='logfile', required=False, type=pathlib.Path, default=None,
-        help='Path to a log file. Defaults to stderr if none given.');
-parser.add_argument('files', type=pathlib.Path, nargs='+',
-        help='List of IP-XACT 2014 component files to be added to the catalog.');
+if __name__ == '__main__':
 
-# parse CLI options
-opts = parser.parse_args();
+    parser = argparse.ArgumentParser(description='Creates or adds to references to IP-XACT 2014 components into IP-XACT 2014 catalog.');
+    parser.add_argument('-o', '--output', dest='output', required=False, type=pathlib.Path,
+            help='IP-XACT output file, stdout if not given.');
+    #TODO parser.add_argument('-m', '--module', dest='module', required=False, type=str,
+    #TODO         help='Name of the root module.');
+    parser.add_argument('--xact', dest='xact', required=False, type=pathlib.Path,
+            help='IP-XACT 2014 catalog to be updated with component refereces.')
+    parser.add_argument('--xact-library', dest='library', required=False, type=str,
+            help='IP-XACT catalog library name.');
+    parser.add_argument('--xact-version', dest='version', required=False, type=str,
+            help='IP-XACT catalog version number.');
+    parser.add_argument('--xact-vendor', dest='vendor', required=False, type=str,
+            help='IP-XACT catalog vendor name.');
+    parser.add_argument('--xact-name', dest='name', required=False, type=str, default='mainfest',
+            help='IP-XACT catalog name.');
+    parser.add_argument('--xact-description', dest='description', required=False, type=str, default='mainfest',
+            help='IP-XACT catalog/library description.');
+    parser.add_argument('--rwd', dest='rwd', required=False, type=pathlib.Path,
+            help='Relative Working Directory (RWD), which to make file paths relative to. Applies only if `output` not specified.');
+    parser.add_argument('--log-level', dest='loglevel', required=False, type=str, default='ERROR',
+            help='Logging severity, one of: DEBUG, INFO, WARNING, ERROR, FATAL. Defaults to ERROR.');
+    parser.add_argument('-l', '--log-file', dest='logfile', required=False, type=pathlib.Path, default=None,
+            help='Path to a log file. Defaults to stderr if none given.');
+    parser.add_argument('files', type=pathlib.Path, nargs='+',
+            help='List of IP-XACT 2014 component files to be added to the catalog.');
 
-# default logging setup
-logging.basicConfig(level=logging.ERROR);
+    # parse CLI options
+    opts = parser.parse_args();
 
-# setup logging destination (file or stderr)
-# (stderr is already set as default in the logging setup)
-if opts.logfile is not None:
-    logFileHandler = None;
+    # default logging setup
+    logging.basicConfig(level=logging.ERROR);
+
+    # setup logging destination (file or stderr)
+    # (stderr is already set as default in the logging setup)
+    if opts.logfile is not None:
+        logFileHandler = None;
+        try:
+            # using `'w'` will make the FileHandler overwrite the log file rather than
+            # append to it
+            logFileHandler = logging.FileHandler(str(opts.logfile),'w');
+        except Exception as e:
+            logging.error(e);
+
+        if logFileHandler is not None:
+            rootLogger = logging.getLogger();
+            fmt = None;
+            if len(rootLogger.handlers) > 0:
+                fmt = rootLogger.handlers[0].formatter;
+            if fmt is not None:
+                logFileHandler.setFormatter(fmt);
+            rootLogger.handlers = []; # remove default handlers
+            rootLogger.addHandler(logFileHandler);
+
+    # setup logging level
     try:
-        # using `'w'` will make the FileHandler overwrite the log file rather than
-        # append to it
-        logFileHandler = logging.FileHandler(str(opts.logfile),'w');
+        logging.getLogger().setLevel(opts.loglevel);
     except Exception as e:
         logging.error(e);
 
-    if logFileHandler is not None:
-        rootLogger = logging.getLogger();
-        fmt = None;
-        if len(rootLogger.handlers) > 0:
-            fmt = rootLogger.handlers[0].formatter;
-        if fmt is not None:
-            logFileHandler.setFormatter(fmt);
-        rootLogger.handlers = []; # remove default handlers
-        rootLogger.addHandler(logFileHandler);
+    # output directory
+    # (`None` means to use absolute paths)
+    if opts.output:
+        outputDir = str(opts.output.parent);
+    elif opts.rwd:
+        outputDir = str(opts.rwd);
+    else:
+        outputDir = None;
 
-# setup logging level
-try:
-    logging.getLogger().setLevel(opts.loglevel);
-except Exception as e:
-    logging.error(e);
-
-# output directory
-# (`None` means to use absolute paths)
-if opts.output:
-    outputDir = str(opts.output.parent);
-elif opts.rwd:
-    outputDir = str(opts.rwd);
-else:
-    outputDir = None;
-
-# ElementTree namespaces for XML parsing
-# (the proper IP-XACT/XML namespaces shall use `xmlns:` prefix to
-# namespace names; however, ElementTree does not support it for
-# `ElementTree.register_namespace()`.)
-ns = {'xsi':"http://www.w3.org/2001/XMLSchema-instance",
-'ipxact':"http://www.accellera.org/XMLSchema/IPXACT/1685-2014"
-};
-
-for p,u in ns.items():
-    logging.debug(f"registering namespace {p}:{u}");
-    et.register_namespace(p, u);
-
-ns = XactNamespace();
-tree = None;
-if opts.xact:
-    try:
-        tree = et.parse(str(opts.xact));
-    except et.ParseError as e:
-        logging.error(f"Failed to parse {opts.xact}: {e}");
-        sys.exit(1);
-
-if not tree:
-    # proper IP-XACT 2014 XML namespaces
-    xactns = {'xmlns:xsi':"http://www.w3.org/2001/XMLSchema-instance",
-    'xsi:schemaLocation':"http://www.accellera.org/XMLSchema/IPXACT/1685-2014 http://www.accellera.org/XMLSchema/IPXACT/1685-2014/index.xsd"
+    # ElementTree namespaces for XML parsing
+    # (the proper IP-XACT/XML namespaces shall use `xmlns:` prefix to
+    # namespace names; however, ElementTree does not support it for
+    # `ElementTree.register_namespace()`.)
+    ns = {'xsi':"http://www.w3.org/2001/XMLSchema-instance",
+    'ipxact':"http://www.accellera.org/XMLSchema/IPXACT/1685-2014"
     };
 
-    # new root element
-    catalog = et.Element(ns.compileTag('catalog'), xactns);
+    for p,u in ns.items():
+        logging.debug(f"registering namespace {p}:{u}");
+        et.register_namespace(p, u);
 
-    # default XML element values (unless relevant options defined
-    # through CLI options)
-    defaults = {'version':'0.0.0', 'name':'manifest'};
+    ns = XactNamespace();
+    tree = None;
+    if opts.xact:
+        try:
+            tree = et.parse(str(opts.xact));
+        except et.ParseError as e:
+            logging.error(f"Failed to parse {opts.xact}: {e}");
+            sys.exit(1);
 
-    for tag in ['vendor', 'library', 'name', 'version', 'description']:
-        e = et.SubElement(catalog, ns.compileTag(tag));
+    if not tree:
+        # proper IP-XACT 2014 XML namespaces
+        xactns = {'xmlns:xsi':"http://www.w3.org/2001/XMLSchema-instance",
+        'xsi:schemaLocation':"http://www.accellera.org/XMLSchema/IPXACT/1685-2014 http://www.accellera.org/XMLSchema/IPXACT/1685-2014/index.xsd"
+        };
 
-        if hasattr(opts,tag) and getattr(opts,tag) is not None:
-            e.text = str(getattr(opts,tag));
-        elif tag in defaults:
-            e.text = defaults[tag];
-        else:
-            e.text = tag;
+        # new root element
+        catalog = et.Element(ns.compileTag('catalog'), xactns);
 
-    tree = et.ElementTree(catalog);
+        # default XML element values (unless relevant options defined
+        # through CLI options)
+        defaults = {'version':'0.0.0', 'name':'manifest'};
 
-else:
-    # test if root is an ipxact component
-    catalog = tree.getroot();
-    if catalog is None or catalog.tag != ns.compileTag('catalog'):
-        logging.error(f'Expecting `ipxact:catalog` root in {opts.xact}: {catalog.tag}');
-        sys.exit(1);
+        for tag in ['vendor', 'library', 'name', 'version', 'description']:
+            e = et.SubElement(catalog, ns.compileTag(tag));
 
-    # sanity check for required VLNV elements
-    for i,tag in enumerate(['vendor','library','name','version']):
-        fulltag = 'ipxact:'+tag;
-        elem = catalog.find(fulltag, XactNamespace.ns);
-        if elem is None:
-            elem = et.Element(ns.compileTag(tag));
-            catalog.insert(i,elem);
             if hasattr(opts,tag) and getattr(opts,tag) is not None:
-                logging.warning(f'Missing `{fulltag}` element in {opts.xact}!');
-                elem.text = getattr(opts,tag);
+                e.text = str(getattr(opts,tag));
+            elif tag in defaults:
+                e.text = defaults[tag];
             else:
-                logging.error(f'Missing `{fulltag}` element in {opts.xact}!');
-                elem.text = tag;
-        elif hasattr(opts,tag):
-            attr = getattr(opts,tag);
-            if attr is not None and attr != elem.text:
-                logging.error(f'User `{fulltag}` element `{attr}` not match `{elem.text}` in {opts.xact}');
+                e.text = tag;
 
-    tree = et.ElementTree(catalog);
+        tree = et.ElementTree(catalog);
 
-# add description (if defined)
-if opts.description:
-    description = catalog.find('ipxact:description', XactNamespace.ns);
-    if description is None:
-        logging.warning(f'No `ipxact:description` element found in catalog!');
-        description = et.Element(ns.compileTag('description'));
-    
-        predecesors = ['vendor','library','name','version'];
-        inserted = False;
-        for i,e in enumerate(tree.getroot()):
-            tag = strip_tag(e);
-            if tag not in predecesors:
-                tree.getroot().insert(i,description);
-                inserted = True;
-                break;
-        if not inserted: tree.getroot().append(description);
+    else:
+        # test if root is an ipxact component
+        catalog = tree.getroot();
+        if catalog is None or catalog.tag != ns.compileTag('catalog'):
+            logging.error(f'Expecting `ipxact:catalog` root in {opts.xact}: {catalog.tag}');
+            sys.exit(1);
 
-    description.text = opts.description;
+        # sanity check for required VLNV elements
+        for i,tag in enumerate(['vendor','library','name','version']):
+            fulltag = 'ipxact:'+tag;
+            elem = catalog.find(fulltag, XactNamespace.ns);
+            if elem is None:
+                elem = et.Element(ns.compileTag(tag));
+                catalog.insert(i,elem);
+                if hasattr(opts,tag) and getattr(opts,tag) is not None:
+                    logging.warning(f'Missing `{fulltag}` element in {opts.xact}!');
+                    elem.text = getattr(opts,tag);
+                else:
+                    logging.error(f'Missing `{fulltag}` element in {opts.xact}!');
+                    elem.text = tag;
+            elif hasattr(opts,tag):
+                attr = getattr(opts,tag);
+                if attr is not None and attr != elem.text:
+                    logging.error(f'User `{fulltag}` element `{attr}` not match `{elem.text}` in {opts.xact}');
 
-# add new IP-XACT view
-xact_add_components( tree, opts.files, outputDir );
+        tree = et.ElementTree(catalog);
 
-# reformat XML
-_pretty_print(tree.getroot());
+    # add description (if defined)
+    if opts.description:
+        description = catalog.find('ipxact:description', XactNamespace.ns);
+        if description is None:
+            logging.warning(f'No `ipxact:description` element found in catalog!');
+            description = et.Element(ns.compileTag('description'));
+        
+            predecesors = ['vendor','library','name','version'];
+            inserted = False;
+            for i,e in enumerate(tree.getroot()):
+                tag = strip_tag(e);
+                if tag not in predecesors:
+                    tree.getroot().insert(i,description);
+                    inserted = True;
+                    break;
+            if not inserted: tree.getroot().append(description);
 
-# print XML
-if opts.output:
-    with open(str(opts.output), 'w') as f:
-        tree.write(f, encoding='unicode', xml_declaration=True);
-else:
-    tree.write(sys.stdout, encoding='unicode', xml_declaration=True);
+        description.text = opts.description;
+
+    # add new IP-XACT view
+    xact_add_components( tree, opts.files, outputDir );
+
+    # reformat XML
+    _pretty_print(tree.getroot());
+
+    # print XML
+    if opts.output:
+        with open(str(opts.output), 'w') as f:
+            tree.write(f, encoding='unicode', xml_declaration=True);
+    else:
+        tree.write(sys.stdout, encoding='unicode', xml_declaration=True);
 

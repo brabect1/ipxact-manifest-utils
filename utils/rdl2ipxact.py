@@ -332,152 +332,155 @@ class CustomIPXACTExporter(IPXACTExporter):
             encoding="UTF-8"
         )
 
-# Instantiate the parser
-parser = argparse.ArgumentParser(description='Reads in System RDL file and exports it to IP-XACT register model.')
-parser.add_argument('-o', '--output', dest='output', required=False, type=pathlib.Path,
-        help='IP-XACT output file, stdout if not given')
-#TODO parser.add_argument('-i', '--input', dest='file', required=True, type=pathlib.Path,
-#TODO         help='System RDL file to convert')
-parser.add_argument('--xact', dest='xact', required=False, type=pathlib.Path,
-        help='IP-XACT 2014 to be updated with view information.')
-parser.add_argument('--xact-library', dest='library', required=False, type=str,
-        help='IP-XACT component library name.');
-parser.add_argument('--xact-version', dest='version', required=False, type=str,
-        help='IP-XACT component version number.');
-parser.add_argument('--xact-vendor', dest='vendor', required=False, type=str,
-        help='IP-XACT component vendor name.');
-parser.add_argument('--xact-name', dest='name', required=False, type=str,
-        help='IP-XACT component name.');
-parser.add_argument('--rwd', dest='rwd', required=False, type=pathlib.Path,
-        help='Relative Working Directory (RWD), which to make file paths relative to. Applies only if `output` not specified.');
-parser.add_argument('--log-level', dest='loglevel', required=False, type=str, default='ERROR',
-        help='Logging severity, one of: DEBUG, INFO, WARNING, ERROR, FATAL. Defaults to ERROR.');
-parser.add_argument('-l', '--log-file', dest='logfile', required=False, type=pathlib.Path, default=None,
-        help='Path to a log file. Defaults to stderr if none given.');
-parser.add_argument('file', type=pathlib.Path,
-        help='System RDL file to convert');
 
-# parse CLI options
-opts = parser.parse_args();
+if __name__ == '__main__':
 
-# default logging setup
-logging.basicConfig(level=logging.ERROR);
+    # Instantiate the parser
+    parser = argparse.ArgumentParser(description='Reads in System RDL file and exports it to IP-XACT register model.')
+    parser.add_argument('-o', '--output', dest='output', required=False, type=pathlib.Path,
+            help='IP-XACT output file, stdout if not given')
+    #TODO parser.add_argument('-i', '--input', dest='file', required=True, type=pathlib.Path,
+    #TODO         help='System RDL file to convert')
+    parser.add_argument('--xact', dest='xact', required=False, type=pathlib.Path,
+            help='IP-XACT 2014 to be updated with view information.')
+    parser.add_argument('--xact-library', dest='library', required=False, type=str,
+            help='IP-XACT component library name.');
+    parser.add_argument('--xact-version', dest='version', required=False, type=str,
+            help='IP-XACT component version number.');
+    parser.add_argument('--xact-vendor', dest='vendor', required=False, type=str,
+            help='IP-XACT component vendor name.');
+    parser.add_argument('--xact-name', dest='name', required=False, type=str,
+            help='IP-XACT component name.');
+    parser.add_argument('--rwd', dest='rwd', required=False, type=pathlib.Path,
+            help='Relative Working Directory (RWD), which to make file paths relative to. Applies only if `output` not specified.');
+    parser.add_argument('--log-level', dest='loglevel', required=False, type=str, default='ERROR',
+            help='Logging severity, one of: DEBUG, INFO, WARNING, ERROR, FATAL. Defaults to ERROR.');
+    parser.add_argument('-l', '--log-file', dest='logfile', required=False, type=pathlib.Path, default=None,
+            help='Path to a log file. Defaults to stderr if none given.');
+    parser.add_argument('file', type=pathlib.Path,
+            help='System RDL file to convert');
 
-# setup logging destination (file or stderr)
-# (stderr is already set as default in the logging setup)
-if opts.logfile is not None:
-    logFileHandler = None;
+    # parse CLI options
+    opts = parser.parse_args();
+
+    # default logging setup
+    logging.basicConfig(level=logging.ERROR);
+
+    # setup logging destination (file or stderr)
+    # (stderr is already set as default in the logging setup)
+    if opts.logfile is not None:
+        logFileHandler = None;
+        try:
+            # using `'w'` will make the FileHandler overwrite the log file rather than
+            # append to it
+            logFileHandler = logging.FileHandler(str(opts.logfile),'w');
+        except Exception as e:
+            logging.error(e);
+
+        if logFileHandler is not None:
+            rootLogger = logging.getLogger();
+            fmt = None;
+            if len(rootLogger.handlers) > 0:
+                fmt = rootLogger.handlers[0].formatter;
+            if fmt is not None:
+                logFileHandler.setFormatter(fmt);
+            rootLogger.handlers = []; # remove default handlers
+            rootLogger.addHandler(logFileHandler);
+
+    # setup logging level
     try:
-        # using `'w'` will make the FileHandler overwrite the log file rather than
-        # append to it
-        logFileHandler = logging.FileHandler(str(opts.logfile),'w');
+        logging.getLogger().setLevel(opts.loglevel);
     except Exception as e:
         logging.error(e);
 
-    if logFileHandler is not None:
-        rootLogger = logging.getLogger();
-        fmt = None;
-        if len(rootLogger.handlers) > 0:
-            fmt = rootLogger.handlers[0].formatter;
-        if fmt is not None:
-            logFileHandler.setFormatter(fmt);
-        rootLogger.handlers = []; # remove default handlers
-        rootLogger.addHandler(logFileHandler);
+    # output directory
+    # (`None` means to use absolute paths)
+    if opts.output:
+        outputDir = str(opts.output.parent);
+    elif opts.rwd:
+        outputDir = str(opts.rwd);
+    else:
+        outputDir = None;
 
-# setup logging level
-try:
-    logging.getLogger().setLevel(opts.loglevel);
-except Exception as e:
-    logging.error(e);
+    # Create an instance of the compiler
+    rdlc = RDLCompiler();
 
-# output directory
-# (`None` means to use absolute paths)
-if opts.output:
-    outputDir = str(opts.output.parent);
-elif opts.rwd:
-    outputDir = str(opts.rwd);
-else:
-    outputDir = None;
-
-# Create an instance of the compiler
-rdlc = RDLCompiler();
-
-try:
-    rdlc.compile_file(opts.file);
-    root = rdlc.elaborate();
-except RDLCompileError as e:
-    # A compilation error occurred. Exit with error code
-    logging.error(f"Failed to parse {opts.file}: {e}");
-    sys.exit(1);
-
-# Override `XactNamespace` mapping as it would otherwise yield ElementTree
-# namespace prefix of `{uri}tag`. Setting it to `None` would make `compileTag()`
-# yield the minidom expected `prefix:tag`.
-XactNamespace.ns = None;
-
-ns = XactNamespace();
-dom = None;
-if opts.xact:
     try:
-        dom = minidom.parse(str(opts.xact));
-    except Exception as e:
-        logging.error(f"Failed to parse {opts.xact}: {e}");
+        rdlc.compile_file(opts.file);
+        root = rdlc.elaborate();
+    except RDLCompileError as e:
+        # A compilation error occurred. Exit with error code
+        logging.error(f"Failed to parse {opts.file}: {e}");
         sys.exit(1);
 
-if not dom:
-    # proper IP-XACT 2014 XML namespaces
-    xactns = {
-            'xmlns:ipxact':"http://www.accellera.org/XMLSchema/IPXACT/1685-2014",
-            'xmlns:xsi':"http://www.w3.org/2001/XMLSchema-instance",
-            'xsi:schemaLocation':"http://www.accellera.org/XMLSchema/IPXACT/1685-2014 http://www.accellera.org/XMLSchema/IPXACT/1685-2014/index.xsd"
-            };
+    # Override `XactNamespace` mapping as it would otherwise yield ElementTree
+    # namespace prefix of `{uri}tag`. Setting it to `None` would make `compileTag()`
+    # yield the minidom expected `prefix:tag`.
+    XactNamespace.ns = None;
 
-    dom = minidom.getDOMImplementation().createDocument(None, None, None);
-    comp = dom.createElement(ns.compileTag('component'));
-    dom.appendChild(comp);
-    #TODO dom = minidom.getDOMImplementation().createDocument(
-    #TODO         xactns['xmlns:ipxact'], ns.compileTag('component'), None);
-    #TODO comp = dom.documentElement;
-    for k,v in xactns.items():
-        if k[:5] == 'xmlns:':
-            comp.setAttributeNS('',k,v);
+    ns = XactNamespace();
+    dom = None;
+    if opts.xact:
+        try:
+            dom = minidom.parse(str(opts.xact));
+        except Exception as e:
+            logging.error(f"Failed to parse {opts.xact}: {e}");
+            sys.exit(1);
+
+    if not dom:
+        # proper IP-XACT 2014 XML namespaces
+        xactns = {
+                'xmlns:ipxact':"http://www.accellera.org/XMLSchema/IPXACT/1685-2014",
+                'xmlns:xsi':"http://www.w3.org/2001/XMLSchema-instance",
+                'xsi:schemaLocation':"http://www.accellera.org/XMLSchema/IPXACT/1685-2014 http://www.accellera.org/XMLSchema/IPXACT/1685-2014/index.xsd"
+                };
+
+        dom = minidom.getDOMImplementation().createDocument(None, None, None);
+        comp = dom.createElement(ns.compileTag('component'));
+        dom.appendChild(comp);
+        #TODO dom = minidom.getDOMImplementation().createDocument(
+        #TODO         xactns['xmlns:ipxact'], ns.compileTag('component'), None);
+        #TODO comp = dom.documentElement;
+        for k,v in xactns.items():
+            if k[:5] == 'xmlns:':
+                comp.setAttributeNS('',k,v);
+            else:
+                comp.setAttribute(k,v);
+
+        # default XML element values (unless relevant options defined
+        # through CLI options)
+        defaults = {'version':'0.0.0', 'name':'manifest'};
+
+        for tag in ['vendor', 'library', 'name', 'version', 'description']:
+            e = dom.createElement(ns.compileTag(tag));
+
+            if hasattr(opts,tag) and getattr(opts,tag) is not None:
+                text = str(getattr(opts,tag));
+            elif tag in defaults:
+                text = defaults[tag];
+            else:
+                text = tag;
+            e.appendChild( dom.createTextNode(text) );
+            comp.appendChild(e);
+
+    if dom:
+        comp = dom.documentElement;
+        add_mmap(root.top, comp, ns);
+
+        #TODO # printing using minidom formattinf/pretty print
+        #TODO sys.stdout.buffer.write( dom.toprettyxml(indent='  ', newl='\n', encoding='UTF-8'));
+
+        # convert from minidom to ElementTree
+        # (as minidom pretty print sucks)
+        tree = minidom2elementtree(dom);
+
+        # reformat XML
+        _pretty_print(tree.getroot());
+
+        # print XML
+        if opts.output:
+            with open(str(opts.output), 'w') as f:
+                tree.write(f, encoding='unicode', xml_declaration=True);
         else:
-            comp.setAttribute(k,v);
-
-    # default XML element values (unless relevant options defined
-    # through CLI options)
-    defaults = {'version':'0.0.0', 'name':'manifest'};
-
-    for tag in ['vendor', 'library', 'name', 'version', 'description']:
-        e = dom.createElement(ns.compileTag(tag));
-
-        if hasattr(opts,tag) and getattr(opts,tag) is not None:
-            text = str(getattr(opts,tag));
-        elif tag in defaults:
-            text = defaults[tag];
-        else:
-            text = tag;
-        e.appendChild( dom.createTextNode(text) );
-        comp.appendChild(e);
-
-if dom:
-    comp = dom.documentElement;
-    add_mmap(root.top, comp, ns);
-
-    #TODO # printing using minidom formattinf/pretty print
-    #TODO sys.stdout.buffer.write( dom.toprettyxml(indent='  ', newl='\n', encoding='UTF-8'));
-
-    # convert from minidom to ElementTree
-    # (as minidom pretty print sucks)
-    tree = minidom2elementtree(dom);
-
-    # reformat XML
-    _pretty_print(tree.getroot());
-
-    # print XML
-    if opts.output:
-        with open(str(opts.output), 'w') as f:
-            tree.write(f, encoding='unicode', xml_declaration=True);
-    else:
-        tree.write(sys.stdout, encoding='unicode', xml_declaration=True);
+            tree.write(sys.stdout, encoding='unicode', xml_declaration=True);
 

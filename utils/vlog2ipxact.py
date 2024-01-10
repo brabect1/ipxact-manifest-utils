@@ -473,196 +473,199 @@ def get_files_in_hierarchy(modules: List, root: str):
                 del pdict[n];
     return paths;
 
-parser = argparse.ArgumentParser(description='Extracts SystemVerilog/Verilog module interface into IP-XACT 2014.');
-parser.add_argument('-o', '--output', dest='output', required=False, type=pathlib.Path,
-        help='IP-XACT output file, stdout if not given.');
-parser.add_argument('-m', '--module', dest='module', required=False, type=str,
-        help='Name of the root module.');
-parser.add_argument('--xact', dest='xact', required=False, type=pathlib.Path,
-        help='IP-XACT 2014 to be updated with module information.')
-parser.add_argument('--verible', dest='verible', required=False, type=pathlib.Path,
-        help='Path to `verible-verilog-syntax` binary.');
-parser.add_argument('--xact-library', dest='library', required=False, type=str,
-        help='IP-XACT component library name.');
-parser.add_argument('--xact-version', dest='version', required=False, type=str,
-        help='IP-XACT component version number.');
-parser.add_argument('--xact-vendor', dest='vendor', required=False, type=str,
-        help='IP-XACT component vendor name.');
-parser.add_argument('--rwd', dest='rwd', required=False, type=pathlib.Path,
-        help='Relative Working Directory (RWD), which to make file paths relative to. Applies only if `output` not specified.');
-parser.add_argument('--log-level', dest='loglevel', required=False, type=str, default='ERROR',
-        help='Logging severity, one of: DEBUG, INFO, WARNING, ERROR, FATAL. Defaults to ERROR.');
-parser.add_argument('-l', '--log-file', dest='logfile', required=False, type=pathlib.Path, default=None,
-        help='Path to a log file. Defaults to stderr if none given.');
-parser.add_argument('files', type=pathlib.Path, nargs='+',
-        help='List of SystemVerilog/Verilog files to process.');
 
-# parse CLI options
-opts = parser.parse_args();
+if __name__ == '__main__':
 
-# default logging setup
-logging.basicConfig(level=logging.ERROR);
+    parser = argparse.ArgumentParser(description='Extracts SystemVerilog/Verilog module interface into IP-XACT 2014.');
+    parser.add_argument('-o', '--output', dest='output', required=False, type=pathlib.Path,
+            help='IP-XACT output file, stdout if not given.');
+    parser.add_argument('-m', '--module', dest='module', required=False, type=str,
+            help='Name of the root module.');
+    parser.add_argument('--xact', dest='xact', required=False, type=pathlib.Path,
+            help='IP-XACT 2014 to be updated with module information.')
+    parser.add_argument('--verible', dest='verible', required=False, type=pathlib.Path,
+            help='Path to `verible-verilog-syntax` binary.');
+    parser.add_argument('--xact-library', dest='library', required=False, type=str,
+            help='IP-XACT component library name.');
+    parser.add_argument('--xact-version', dest='version', required=False, type=str,
+            help='IP-XACT component version number.');
+    parser.add_argument('--xact-vendor', dest='vendor', required=False, type=str,
+            help='IP-XACT component vendor name.');
+    parser.add_argument('--rwd', dest='rwd', required=False, type=pathlib.Path,
+            help='Relative Working Directory (RWD), which to make file paths relative to. Applies only if `output` not specified.');
+    parser.add_argument('--log-level', dest='loglevel', required=False, type=str, default='ERROR',
+            help='Logging severity, one of: DEBUG, INFO, WARNING, ERROR, FATAL. Defaults to ERROR.');
+    parser.add_argument('-l', '--log-file', dest='logfile', required=False, type=pathlib.Path, default=None,
+            help='Path to a log file. Defaults to stderr if none given.');
+    parser.add_argument('files', type=pathlib.Path, nargs='+',
+            help='List of SystemVerilog/Verilog files to process.');
 
-# setup logging destination (file or stderr)
-# (stderr is already set as default in the logging setup)
-if opts.logfile is not None:
-    logFileHandler = None;
+    # parse CLI options
+    opts = parser.parse_args();
+
+    # default logging setup
+    logging.basicConfig(level=logging.ERROR);
+
+    # setup logging destination (file or stderr)
+    # (stderr is already set as default in the logging setup)
+    if opts.logfile is not None:
+        logFileHandler = None;
+        try:
+            # using `'w'` will make the FileHandler overwrite the log file rather than
+            # append to it
+            logFileHandler = logging.FileHandler(str(opts.logfile),'w');
+        except Exception as e:
+            logging.error(e);
+
+        if logFileHandler is not None:
+            rootLogger = logging.getLogger();
+            fmt = None;
+            if len(rootLogger.handlers) > 0:
+                fmt = rootLogger.handlers[0].formatter;
+            if fmt is not None:
+                logFileHandler.setFormatter(fmt);
+            rootLogger.handlers = []; # remove default handlers
+            rootLogger.addHandler(logFileHandler);
+
+    # setup logging level
     try:
-        # using `'w'` will make the FileHandler overwrite the log file rather than
-        # append to it
-        logFileHandler = logging.FileHandler(str(opts.logfile),'w');
+        logging.getLogger().setLevel(opts.loglevel);
     except Exception as e:
         logging.error(e);
 
-    if logFileHandler is not None:
-        rootLogger = logging.getLogger();
-        fmt = None;
-        if len(rootLogger.handlers) > 0:
-            fmt = rootLogger.handlers[0].formatter;
-        if fmt is not None:
-            logFileHandler.setFormatter(fmt);
-        rootLogger.handlers = []; # remove default handlers
-        rootLogger.addHandler(logFileHandler);
+    # `verible` parser binary
+    parser_path='verible-verilog-syntax';
+    if opts.verible:
+        parser_path = str(opts.verible);
 
-# setup logging level
-try:
-    logging.getLogger().setLevel(opts.loglevel);
-except Exception as e:
-    logging.error(e);
-
-# `verible` parser binary
-parser_path='verible-verilog-syntax';
-if opts.verible:
-    parser_path = str(opts.verible);
-
-# input SystemVerilog/Verilog file
-file_paths = [str(f) for f in opts.files];
-
-if opts.output:
-    outputDir = str(opts.output.parent);
-elif opts.rwd:
-    outputDir = str(opts.rwd);
-else:
-    outputDir = None;
-
-# ElementTree namespaces for XML parsing
-# (the proper IP-XACT/XML namespaces shall use `xmlns:` prefix to
-# namespace names; however, ElementTree does not support it for
-# `ElementTree.register_namespace()`.)
-ns = {'xsi':"http://www.w3.org/2001/XMLSchema-instance",
-'ipxact':"http://www.accellera.org/XMLSchema/IPXACT/1685-2014"
-};
-
-for p,u in ns.items():
-    logging.debug(f"registering namespace {p}:{u}");
-    et.register_namespace(p, u);
-
-parser = verible_verilog_syntax.VeribleVerilogSyntax(executable=parser_path);
-modules = process_files(parser, file_paths);
-
-if len(modules) > 0:
-    module = None;
-    if opts.module:
-        for m in modules:
-            if m['name'] == opts.module:
-                module = m;
-                break;
-        if not module:
-            logging.error(f'Failed to find module \'{opts.module}\'!');
-            sys.exit(1);
-    else:
-        # use the first root module
-        roots = [m for m in modules if m['is_root']];
-        module = roots[0];
-
-    logging.debug(anytree.RenderTree( get_module_hierarchy(modules, module['name']) ));
-
-    xactns = {'xmlns:xsi':"http://www.w3.org/2001/XMLSchema-instance",
-    'xsi:schemaLocation':"http://www.accellera.org/XMLSchema/IPXACT/1685-2014 http://www.accellera.org/XMLSchema/IPXACT/1685-2014/index.xsd"
-    };
-    ns = XactNamespace();
-
-    comp = et.Element(ns.compileTag('component'), xactns);
-
-    # default XML element values (unless relevant options defined
-    # through CLI options)
-    defaults = {'version':'0.0.0', 'name':'manifest'};
-
-    for tag in ['vendor', 'library', 'name', 'version']:
-        e = et.SubElement(comp, ns.compileTag(tag));
-
-        # treat `name` element specifically
-        if tag == 'name':
-            e.text = module['name'];
-            continue;
-
-        if hasattr(opts,tag) and getattr(opts,tag) is not None:
-            e.text = str(getattr(opts,tag));
-        elif tag in defaults:
-            e.text = defaults[tag];
-        else:
-            e.text = tag;
-
-    model = et.SubElement(comp, ns.compileTag('model'));
-
-    views = et.SubElement(model, ns.compileTag('views'));
-
-    rtlView = et.SubElement(views, ns.compileTag('view'));
-    viewName = et.SubElement(rtlView, ns.compileTag('name'));
-    viewName.text = 'rtl';
-    compInstRef = et.SubElement(rtlView, ns.compileTag('componentInstantiationRef'));
-    compInstRef.text = viewName.text + '_implementation';
-
-    insts = et.SubElement(model, ns.compileTag('instantiations'));
-    compInst = et.SubElement(insts, ns.compileTag('componentInstantiation'));
-    instName = et.SubElement(compInst, ns.compileTag('name'));
-    instName.text = compInstRef.text;
-
-    if 'parameters' in module:
-        params  = et.SubElement(compInst, ns.compileTag('moduleParameters'));
-        for param in module['parameters']:
-            params.append( param.etXact() );
-
-    instFileSetRef = et.SubElement(compInst, ns.compileTag('fileSetRef'));
-    instFileSetRef = et.SubElement(instFileSetRef, ns.compileTag('localName'));
-    instFileSetRef.text = viewName.text + '_files';
-
-    if 'ports' in module:
-        ports  = et.SubElement(model, ns.compileTag('ports'));
-        for port in module['ports']:
-            ports.append( port.etXact() );
-
-    fileSets = et.SubElement(comp, ns.compileTag('fileSets'));
-    fileSet = et.SubElement(fileSets, ns.compileTag('fileSet'));
-    fileSetName = et.SubElement(fileSet, ns.compileTag('name'));
-    fileSetName.text = instFileSetRef.text;
-
-    for p in get_files_in_hierarchy(modules, module['name']):
-        f = pathlib.Path(p);
-        fileSetFile = et.SubElement(fileSet, ns.compileTag('file'));
-        fileSetFileName = et.SubElement(fileSetFile, ns.compileTag('name'));
-
-        if outputDir:
-            fileSetFileName.text = str(f.relative_to(outputDir));
-        else:
-            fileSetFileName.text = str(f.absolute());
-
-        fileSetFileType = et.SubElement(fileSetFile, ns.compileTag('fileType'));
-        fileExt = f.suffix;
-        if fileExt:
-            if fileExt == 'v' or fileExt == 'vh':
-                fileSetFileType.text = 'verilogSource';
-            else:
-                fileSetFileType.text = 'systemVerilogSource';
-        else:
-            fileSetFileType.text = 'systemVerilogSource';
-
-    _pretty_print(comp);
-    tree = et.ElementTree(comp);
+    # input SystemVerilog/Verilog file
+    file_paths = [str(f) for f in opts.files];
 
     if opts.output:
-        with open(str(opts.output), 'w') as f:
-            tree.write(f, encoding='unicode', xml_declaration=True);
+        outputDir = str(opts.output.parent);
+    elif opts.rwd:
+        outputDir = str(opts.rwd);
     else:
-        tree.write(sys.stdout, encoding='unicode', xml_declaration=True);
+        outputDir = None;
+
+    # ElementTree namespaces for XML parsing
+    # (the proper IP-XACT/XML namespaces shall use `xmlns:` prefix to
+    # namespace names; however, ElementTree does not support it for
+    # `ElementTree.register_namespace()`.)
+    ns = {'xsi':"http://www.w3.org/2001/XMLSchema-instance",
+    'ipxact':"http://www.accellera.org/XMLSchema/IPXACT/1685-2014"
+    };
+
+    for p,u in ns.items():
+        logging.debug(f"registering namespace {p}:{u}");
+        et.register_namespace(p, u);
+
+    parser = verible_verilog_syntax.VeribleVerilogSyntax(executable=parser_path);
+    modules = process_files(parser, file_paths);
+
+    if len(modules) > 0:
+        module = None;
+        if opts.module:
+            for m in modules:
+                if m['name'] == opts.module:
+                    module = m;
+                    break;
+            if not module:
+                logging.error(f'Failed to find module \'{opts.module}\'!');
+                sys.exit(1);
+        else:
+            # use the first root module
+            roots = [m for m in modules if m['is_root']];
+            module = roots[0];
+
+        logging.debug(anytree.RenderTree( get_module_hierarchy(modules, module['name']) ));
+
+        xactns = {'xmlns:xsi':"http://www.w3.org/2001/XMLSchema-instance",
+        'xsi:schemaLocation':"http://www.accellera.org/XMLSchema/IPXACT/1685-2014 http://www.accellera.org/XMLSchema/IPXACT/1685-2014/index.xsd"
+        };
+        ns = XactNamespace();
+
+        comp = et.Element(ns.compileTag('component'), xactns);
+
+        # default XML element values (unless relevant options defined
+        # through CLI options)
+        defaults = {'version':'0.0.0', 'name':'manifest'};
+
+        for tag in ['vendor', 'library', 'name', 'version']:
+            e = et.SubElement(comp, ns.compileTag(tag));
+
+            # treat `name` element specifically
+            if tag == 'name':
+                e.text = module['name'];
+                continue;
+
+            if hasattr(opts,tag) and getattr(opts,tag) is not None:
+                e.text = str(getattr(opts,tag));
+            elif tag in defaults:
+                e.text = defaults[tag];
+            else:
+                e.text = tag;
+
+        model = et.SubElement(comp, ns.compileTag('model'));
+
+        views = et.SubElement(model, ns.compileTag('views'));
+
+        rtlView = et.SubElement(views, ns.compileTag('view'));
+        viewName = et.SubElement(rtlView, ns.compileTag('name'));
+        viewName.text = 'rtl';
+        compInstRef = et.SubElement(rtlView, ns.compileTag('componentInstantiationRef'));
+        compInstRef.text = viewName.text + '_implementation';
+
+        insts = et.SubElement(model, ns.compileTag('instantiations'));
+        compInst = et.SubElement(insts, ns.compileTag('componentInstantiation'));
+        instName = et.SubElement(compInst, ns.compileTag('name'));
+        instName.text = compInstRef.text;
+
+        if 'parameters' in module:
+            params  = et.SubElement(compInst, ns.compileTag('moduleParameters'));
+            for param in module['parameters']:
+                params.append( param.etXact() );
+
+        instFileSetRef = et.SubElement(compInst, ns.compileTag('fileSetRef'));
+        instFileSetRef = et.SubElement(instFileSetRef, ns.compileTag('localName'));
+        instFileSetRef.text = viewName.text + '_files';
+
+        if 'ports' in module:
+            ports  = et.SubElement(model, ns.compileTag('ports'));
+            for port in module['ports']:
+                ports.append( port.etXact() );
+
+        fileSets = et.SubElement(comp, ns.compileTag('fileSets'));
+        fileSet = et.SubElement(fileSets, ns.compileTag('fileSet'));
+        fileSetName = et.SubElement(fileSet, ns.compileTag('name'));
+        fileSetName.text = instFileSetRef.text;
+
+        for p in get_files_in_hierarchy(modules, module['name']):
+            f = pathlib.Path(p);
+            fileSetFile = et.SubElement(fileSet, ns.compileTag('file'));
+            fileSetFileName = et.SubElement(fileSetFile, ns.compileTag('name'));
+
+            if outputDir:
+                fileSetFileName.text = str(f.relative_to(outputDir));
+            else:
+                fileSetFileName.text = str(f.absolute());
+
+            fileSetFileType = et.SubElement(fileSetFile, ns.compileTag('fileType'));
+            fileExt = f.suffix;
+            if fileExt:
+                if fileExt == 'v' or fileExt == 'vh':
+                    fileSetFileType.text = 'verilogSource';
+                else:
+                    fileSetFileType.text = 'systemVerilogSource';
+            else:
+                fileSetFileType.text = 'systemVerilogSource';
+
+        _pretty_print(comp);
+        tree = et.ElementTree(comp);
+
+        if opts.output:
+            with open(str(opts.output), 'w') as f:
+                tree.write(f, encoding='unicode', xml_declaration=True);
+        else:
+            tree.write(sys.stdout, encoding='unicode', xml_declaration=True);
 
