@@ -219,6 +219,23 @@ class TestVlogGetPorts(unittest.TestCase):
         exp = {'name': 'a', 'type': 'logic', 'dir': 'in', 'dimensions': [['0','1']]};
         self.assertEqual( ports[0].toDict(), exp );
 
+    def test_single_input_typed_vector_unpacked_size(self):
+        data = '''
+        module foo(
+            input logic a[10]
+        );
+        endmodule
+        '''
+
+        cst = self.parse_verilog(data);
+        module = cst.tree.find({"tag": "kModuleDeclaration"});
+        ports = get_ports(module);
+
+        self.assertEqual( len(ports), 1 );
+
+        exp = {'name': 'a', 'type': 'logic', 'dir': 'in', 'dimensions': [['0','10-1']]};
+        self.assertEqual( ports[0].toDict(), exp );
+
     def test_single_input_typed_vector_unpacked_2dim(self):
         data = '''
         module foo(
@@ -234,6 +251,23 @@ class TestVlogGetPorts(unittest.TestCase):
         self.assertEqual( len(ports), 1 );
 
         exp = {'name': 'b', 'type': 'logic', 'dir': 'in', 'dimensions': [['4','3'],['0','1']]};
+        self.assertEqual( ports[0].toDict(), exp );
+
+    def test_single_input_typed_vector_multidim_packed_unpacked(self):
+        data = '''
+        module foo(
+            input logic[7:0] b[1:3]
+        );
+        endmodule
+        '''
+
+        cst = self.parse_verilog(data);
+        module = cst.tree.find({"tag": "kModuleDeclaration"});
+        ports = get_ports(module);
+
+        self.assertEqual( len(ports), 1 );
+
+        exp = {'name': 'b', 'type': 'logic', 'dir': 'in', 'dimensions': [['1','3'],['7','0']]};
         self.assertEqual( ports[0].toDict(), exp );
 
     def test_single_output_typed_scalar(self):
