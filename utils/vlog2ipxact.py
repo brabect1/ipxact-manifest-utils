@@ -164,6 +164,27 @@ class Port(object):
 
         return p;
 
+    def toDict(self):
+        d = {'name': self.name};
+
+        if self.direction in Port.lutDirection:
+            d['dir'] = Port.lutDirection[self.direction];
+        else:
+            #TODO report error/warning
+            d['dir'] = Port.lutDirection['input'];
+
+        if self.datatype:
+            d['type'] = self.datatype;
+        else:
+            d['type'] = None;
+
+        if self.dimensions and len(self.dimensions) > 0:
+            d['dimensions'] = [];
+            for dimension in self.dimensions:
+                d['dimensions'].append([dimension.left,dimension.right]);
+
+        return d;
+
 
 class Parameter(object):
 
