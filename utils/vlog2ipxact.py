@@ -320,6 +320,45 @@ def get_parameters(module_data: verible_verilog_syntax.SyntaxData):
 
 def get_ports(module_data: verible_verilog_syntax.SyntaxData):
     ports = [];
+
+    # in Verilog syntax, port direction and type are defined outside
+    # module port list. In Verible CST, this information is contained
+    # within a 'kModuleItemList' node.
+    portDeclarations = {};
+    moduleItems = module_data.find({'tag':['kModuleItemList']});
+    if moduleItems:
+        for decl in moduleItems.iter_find_all({'tag': ['kModulePortDeclaration', 'kNetDeclaration', 'kDataDeclaration']}):
+            for name in decl.iter_find_all({"tag": ["SymbolIdentifier", "EscapedIdentifier"]}):
+                name = name.text;
+
+                if name in portDeclarations:
+                    dimensions,direction,datatype = portDeclarations[name];
+                else:
+                    dimensions = None;
+                    direction = None;
+                    datatype = None;
+
+                if decl.tag == 'kModulePortDeclaration':
+                    direction = decl.children[0].text;
+
+                if datatype is None:
+                    datatype = decl.find({'tag': ['kDataType']});
+                    if datatype and len(datatype.children) > 0:
+                        primitivetype = decl.find({'tag': ['kDataTypePrimitive']});
+                        if primitivetype:
+                            datatype = primitivetype.text;
+                        else:
+                            if datatype.text:
+                                datatype = datatype.text;
+                            else:
+                                datatype = None;
+
+                #TODO
+                if dimensions is None:
+                    pass
+
+                portDeclarations[name] = [dimensions,direction,datatype];
+
     lastPortDecl = None;
     for port in module_data.iter_find_all({"tag": ["kPortDeclaration", "kPort"]}):
         if port.tag == 'kPortDeclaration':
@@ -360,6 +399,9 @@ def get_ports(module_data: verible_verilog_syntax.SyntaxData):
                     datatype = None;
 
             direction = lastPortDecl.children[0].text;
+        elif name in portDeclarations:
+            dimensions,direction,datatype = portDeclarations[name];
+
         #TODO print(anytree.RenderTree(port));
         #TODO print(port.children[0]);
         ports.append( Port(name, direction=direction, datatype=datatype, dimensions=dimensions) );

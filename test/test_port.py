@@ -424,3 +424,56 @@ class TestVlogGetPorts(unittest.TestCase):
         for i in range(len(exp)):
             self.assertEqual( ports[i].toDict(), exp[i] );
 
+    def test_vlog_multiple_ports(self):
+        data = '''
+        module test(a,b,c);
+        input a;
+        inout b;
+        output c;
+        wire b;
+        reg c;
+        endmodule
+        '''
+
+        cst = self.parse_verilog(data);
+        module = cst.tree.find({"tag": "kModuleDeclaration"});
+        ports = get_ports(module);
+
+        exp = [
+                {'name': 'a', 'type': None, 'dir': 'in'},
+                {'name': 'b', 'type': 'wire', 'dir': 'inout'},
+                {'name': 'c', 'type': 'reg', 'dir': 'out'},
+                ];
+
+        self.assertEqual( len(ports), len(exp) );
+        for i in range(len(exp)):
+            self.assertEqual( ports[i].toDict(), exp[i] );
+
+    def test_vlog_multiple_ports_2(self):
+        data = '''
+        module test(a,b,c,a1,b1,c1);
+        input a,a1;
+        inout b,b1;
+        output c,c1;
+        wire b,b1;
+        reg c,c1;
+        endmodule
+        '''
+
+        cst = self.parse_verilog(data);
+        module = cst.tree.find({"tag": "kModuleDeclaration"});
+        ports = get_ports(module);
+
+        exp = [
+                {'name': 'a', 'type': None, 'dir': 'in'},
+                {'name': 'b', 'type': 'wire', 'dir': 'inout'},
+                {'name': 'c', 'type': 'reg', 'dir': 'out'},
+                {'name': 'a1', 'type': None, 'dir': 'in'},
+                {'name': 'b1', 'type': 'wire', 'dir': 'inout'},
+                {'name': 'c1', 'type': 'reg', 'dir': 'out'},
+                ];
+
+        self.assertEqual( len(ports), len(exp) );
+        for i in range(len(exp)):
+            self.assertEqual( ports[i].toDict(), exp[i] );
+
