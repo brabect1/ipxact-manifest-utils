@@ -280,9 +280,8 @@ def get_parameters(module_data: verible_verilog_syntax.SyntaxData):
         value = None;
 
         if lastParamDecl:
-            paramDimensions = lastParamDecl.find({'tag': ['kDeclarationDimensions']});
-            if paramDimensions:
-                dimensions = [];
+            for paramDimensions in lastParamDecl.iter_find_all({'tag': ['kDeclarationDimensions']}):
+                if dimensions is None: dimensions = [];
                 paramDimensions = paramDimensions.find_all({'tag': ['kDimensionRange','kDimensionScalar']});
                 for paramDimension in paramDimensions:
                     if paramDimension.tag == 'kDimensionRange':
@@ -337,9 +336,8 @@ def get_ports(module_data: verible_verilog_syntax.SyntaxData):
         datatype = None;
 
         if lastPortDecl:
-            portDimensions = lastPortDecl.find({'tag': ['kDeclarationDimensions']});
-            if portDimensions:
-                dimensions = [];
+            for portDimensions in lastPortDecl.iter_find_all({'tag': ['kDeclarationDimensions']}):
+                if dimensions is None: dimensions = [];
                 portDimensions = portDimensions.find_all({'tag': ['kDimensionRange','kDimensionScalar']});
                 for portDimension in portDimensions:
                     if portDimension.tag == 'kDimensionRange':
