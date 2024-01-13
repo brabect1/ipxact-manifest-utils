@@ -239,6 +239,26 @@ class Parameter(object):
         return p;
 
 
+def get_dimensions(data: verible_verilog_syntax.SyntaxData, dimensions = None):
+    if data is not None:
+        for portDimensions in data.iter_find_all({'tag': ['kDeclarationDimensions']}):
+            #print(anytree.RenderTree(portDimensions));
+            if dimensions is None: dimensions = [];
+            portDimensions = portDimensions.find_all({'tag': ['kDimensionRange','kDimensionScalar']});
+            for portDimension in portDimensions:
+                if portDimension.tag == 'kDimensionRange':
+                    dimensionRange = portDimension.find_all({'tag':['kExpression']}, iter_ = PreOrderDepthTreeIterator, depth=1);
+                    left = dimensionRange[0].text;
+                    right = dimensionRange[1].text;
+                    dimensions.append( TypeDimension(left,right) );
+                elif portDimension.tag == 'kDimensionScalar':
+                    size = portDimension.find({'tag':['kExpressionList']});
+                    if size:
+                        dimensions.append( TypeDimension('0',size.text+'-1') );
+
+    return dimensions
+
+
 def get_instances(module_data: verible_verilog_syntax.SyntaxData):
     insts = None;
     for inst in module_data.iter_find_all({"tag": ["kInstantiationBase"]}):
@@ -353,9 +373,8 @@ def get_ports(module_data: verible_verilog_syntax.SyntaxData):
                             else:
                                 datatype = None;
 
-                #TODO
                 if dimensions is None:
-                    pass
+                    dimensions = get_dimensions(decl,dimensions);
 
                 portDeclarations[name] = [dimensions,direction,datatype];
 
@@ -375,19 +394,21 @@ def get_ports(module_data: verible_verilog_syntax.SyntaxData):
         datatype = None;
 
         if lastPortDecl:
-            for portDimensions in lastPortDecl.iter_find_all({'tag': ['kDeclarationDimensions']}):
-                if dimensions is None: dimensions = [];
-                portDimensions = portDimensions.find_all({'tag': ['kDimensionRange','kDimensionScalar']});
-                for portDimension in portDimensions:
-                    if portDimension.tag == 'kDimensionRange':
-                        dimensionRange = portDimension.find_all({'tag':['kExpression']}, iter_ = PreOrderDepthTreeIterator, depth=1);
-                        left = dimensionRange[0].text;
-                        right = dimensionRange[1].text;
-                        dimensions.append( TypeDimension(left,right) );
-                    elif portDimension.tag == 'kDimensionScalar':
-                        size = portDimension.find({'tag':['kExpressionList']});
-                        if size:
-                            dimensions.append( TypeDimension('0',size.text+'-1') );
+
+            # get unpacked dimensions first
+            if port.tag != 'kPortDeclaration':
+                # when the tree node is a 'kPort', then it may have port-specific
+                # unpacked dimensions
+                dimensions = get_dimensions(port,dimensions);
+            elif port.tag == 'kPortDeclaration':
+                for unpackedDimensions in port.iter_find_all({'tag': ['kUnpackedDimensions']}):
+                    dimensions = get_dimensions(unpackedDimensions,dimensions);
+            else:
+                raise NotImplementedError('unexpected case');
+
+            # add packed dimensions from the port declaration
+            for packedDimensions in lastPortDecl.iter_find_all({'tag': ['kPackedDimensions']}):
+                dimensions = get_dimensions(packedDimensions,dimensions);
 
             datatype = lastPortDecl.find({'tag': ['kDataTypePrimitive']});
             if datatype:
