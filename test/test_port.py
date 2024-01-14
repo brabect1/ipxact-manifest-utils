@@ -524,3 +524,85 @@ class TestVlogGetPorts(unittest.TestCase):
         for i in range(len(exp)):
             self.assertEqual( ports[i].toDict(), exp[i] );
 
+    def test_vlog_multiple_unpacked_vector_ports(self):
+        data = '''
+        module test(a,b,c);
+        input a [1:0];
+        inout b [7:0];
+        output c[0:1];
+        wire b[7:0];
+        reg c[0:1];
+        endmodule
+        '''
+
+        cst = self.parse_verilog(data);
+        module = cst.tree.find({"tag": "kModuleDeclaration"});
+        ports = get_ports(module);
+
+        exp = [
+                {'name': 'a', 'type': None, 'dir': 'in', 'dimensions': [['1','0']]},
+                {'name': 'b', 'type': 'wire', 'dir': 'inout', 'dimensions': [['7','0']]},
+                {'name': 'c', 'type': 'reg', 'dir': 'out', 'dimensions': [['0','1']]},
+                ];
+
+        self.assertEqual( len(ports), len(exp) );
+        for i in range(len(exp)):
+            self.assertEqual( ports[i].toDict(), exp[i] );
+
+    def test_vlog_multiple_packed_unpacked_vector_ports(self):
+        data = '''
+        module test(a,b,c);
+        input [1:0] a[1:2];
+        inout [7:0] b[2:3];
+        output[0:1] c[3:4];
+        wire[7:0] b[2:3];
+        reg [0:1] c[3:4];
+        endmodule
+        '''
+
+        cst = self.parse_verilog(data);
+        module = cst.tree.find({"tag": "kModuleDeclaration"});
+        ports = get_ports(module);
+
+        exp = [
+                {'name': 'a', 'type': None, 'dir': 'in', 'dimensions': [['1','2'],['1','0']]},
+                {'name': 'b', 'type': 'wire', 'dir': 'inout', 'dimensions': [['2','3'],['7','0']]},
+                {'name': 'c', 'type': 'reg', 'dir': 'out', 'dimensions': [['3','4'],['0','1']]},
+                ];
+
+        self.assertEqual( len(ports), len(exp) );
+        for i in range(len(exp)):
+            self.assertEqual( ports[i].toDict(), exp[i] );
+
+    def test_vlog_multiple_packed_unpacked_vector_ports_2(self):
+        data = '''
+        module test(a,b,c,a1,b1,c1);
+        input a[1:2],a1;
+        inout[1:0] b,b1;
+        output[7:0] c,c1[1:4];
+        wire[1:0] b,b1;
+        reg[7:0] c,c1[1:4];
+        reg r;
+        wire w;
+        endmodule
+        '''
+
+        cst = self.parse_verilog(data);
+        module = cst.tree.find({"tag": "kModuleDeclaration"});
+        ports = get_ports(module);
+
+        # IMPORTANT: Expected port list is in the order port names appear
+        # in the module port list.
+        exp = [
+                {'name': 'a', 'type': None, 'dir': 'in', 'dimensions': [['1','2']]},
+                {'name': 'b', 'type': 'wire', 'dir': 'inout', 'dimensions': [['1','0']]},
+                {'name': 'c', 'type': 'reg', 'dir': 'out', 'dimensions': [['7','0']]},
+                {'name': 'a1', 'type': None, 'dir': 'in'},
+                {'name': 'b1', 'type': 'wire', 'dir': 'inout', 'dimensions': [['1','0']]},
+                {'name': 'c1', 'type': 'reg', 'dir': 'out', 'dimensions': [['1','4'],['7','0']]},
+                ];
+
+        self.assertEqual( len(ports), len(exp) );
+        for i in range(len(exp)):
+            self.assertEqual( ports[i].toDict(), exp[i] );
+

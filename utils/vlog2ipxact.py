@@ -347,35 +347,80 @@ def get_ports(module_data: verible_verilog_syntax.SyntaxData):
     portDeclarations = {};
     moduleItems = module_data.find({'tag':['kModuleItemList']});
     if moduleItems:
+        declSpecs = {
+                'kModulePortDeclaration': {
+                    'portItem': 'kIdentifierUnpackedDimensions',
+                    'typeItem': None,
+                    },
+                'kNetDeclaration': {
+                    'portItem': 'kNetVariable',
+                    'typeItem': 'kDataType',
+                    'typeIterClass': PreOrderDepthTreeIterator,
+                    'typeIterKwargs': {'depth':1},
+                    },
+                'kDataDeclaration': {
+                    'portItem': 'kRegisterVariable',
+                    'typeItem': 'kDataTypePrimitive',
+                    'typeIterClass': verible_verilog_syntax.LevelOrderTreeIterator,
+                    'typeIterKwargs': {}, # don't care
+                    },
+                };
         for decl in moduleItems.iter_find_all({'tag': ['kModulePortDeclaration', 'kNetDeclaration', 'kDataDeclaration']}):
-            for name in decl.iter_find_all({"tag": ["SymbolIdentifier", "EscapedIdentifier"]}):
+            # get packed dimensions
+            _packedDimensions = None;
+            for packedDimensions in decl.iter_find_all({'tag': ['kPackedDimensions']}):
+                _packedDimensions = get_dimensions(packedDimensions,_packedDimensions);
+
+            if decl.tag in declSpecs:
+                portItemName = declSpecs[decl.tag]['portItem'];
+                datatypeItemName = declSpecs[decl.tag]['typeItem'];
+            else:
+                raise NotImplementedError('unexpected case');
+
+
+            # go through individual port declarations
+            for port in decl.iter_find_all({'tag': [portItemName]}):
+
+                # get name
+                name = port.find({"tag": ["SymbolIdentifier", "EscapedIdentifier"]});
+                if name is None: continue;
                 name = name.text;
 
-                if name in portDeclarations:
-                    dimensions,direction,datatype = portDeclarations[name];
-                else:
-                    dimensions = None;
-                    direction = None;
-                    datatype = None;
+                # sanity check
+                # ('kModulePortDeclaration' shall come before any other kind of module items)
+                if decl.tag == 'kModulePortDeclaration' and name in portDeclarations:
+                    raise Exception(f'Module item \'{name}\' already exists!');
 
+                # get direction
+                direction = None;
                 if decl.tag == 'kModulePortDeclaration':
                     direction = decl.children[0].text;
+                elif name in portDeclarations:
+                    direction = portDeclarations[name][1];
 
-                if datatype is None:
-                    datatype = decl.find({'tag': ['kDataType']});
-                    if datatype and len(datatype.children) > 0:
-                        primitivetype = decl.find({'tag': ['kDataTypePrimitive']});
-                        if primitivetype:
-                            datatype = primitivetype.text;
-                        else:
-                            if datatype.text:
-                                datatype = datatype.text;
-                            else:
-                                datatype = None;
+                # get data type
+                datatype = None;
+                if datatypeItemName is not None:
+                    datatype = decl.find_all({'tag':[datatypeItemName]},
+                            iter_ = declSpecs[decl.tag]['typeIterClass'],
+                            **declSpecs[decl.tag]['typeIterKwargs'],
+                            );
+                    datatype = datatype[0].text;
 
-                if dimensions is None:
-                    dimensions = get_dimensions(decl,dimensions);
+                # get unpacked dimensions
+                dimensions = None;
+                for unpackedDimensions in port.iter_find_all({'tag': ['kUnpackedDimensions']}):
+                    dimensions = get_dimensions(unpackedDimensions,dimensions);
 
+                # add packed dimensions (if defined)
+                if _packedDimensions is not None:
+                    if dimensions:
+                        dimensions += _packedDimensions;
+                    else:
+                        dimensions = _packedDimensions;
+
+                # add port declaration into the list
+                logging.debug(f'port declaration: {decl.tag}, name={name}, dir={direction}, type={datatype}, dims={dimensions}');
                 portDeclarations[name] = [dimensions,direction,datatype];
 
     lastPortDecl = None;
